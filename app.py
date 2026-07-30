@@ -98,18 +98,18 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 아이콘과 수집 & 필터 설정 텍스트 100% 수평 센터 완벽 정렬 💥 */
+    /* 💥 톱니바퀴 아이콘 위치를 미세 조절하여 글씨와 100% 한 줄 수평 정렬 💥 */
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
         display: flex !important;
         align-items: center !important;
-        justify-content: flex-start !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"] {
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        padding-top: 4px !important; /* 높이가 높았던 톱니바퀴를 아래로 미세 보정 */
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button {
         background: transparent !important;
@@ -124,11 +124,10 @@ st.markdown("""
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
-        display: flex !important;
-        align-items: center !important;
+        transform: translateY(2px) !important; /* 톱니바퀴 Y축 미세 하향 정렬 */
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button p {
-        font-size: 1.3rem !important;
+        font-size: 1.25rem !important;
         line-height: 1 !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -141,7 +140,7 @@ st.markdown("""
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:last-child h3 {
         font-size: 1.3rem !important;
-        line-height: 1 !important;
+        line-height: 1.2 !important;
         margin: 0 !important;
         padding: 0 !important;
         font-weight: 700 !important;
