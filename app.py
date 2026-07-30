@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 가독성 및 톱니바퀴 테두리 제거 스타일 정의 ---
+# --- CSS 가독성 및 사이드바 타이틀 버튼 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -97,29 +97,29 @@ st.markdown("""
     div[data-testid="stDataFrame"] > div {
         overflow-x: auto !important;
     }
-    /* 사이드바 상단 톱니바퀴 높이 및 테두리 완벽 제거 */
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
-        align-items: center !important;
-        margin-top: -15px !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button {
+    /* 사이드바 제목 버튼('⚙️ 수집 & 필터 설정')을 헤더 텍스트처럼 감쪽같이 투명화 */
+    .sidebar-header-btn button {
         border: none !important;
-        background-color: transparent !important;
         background: transparent !important;
+        background-color: transparent !important;
         box-shadow: none !important;
         padding: 0px !important;
         margin: 0px !important;
-        font-size: 20px !important;
-        outline: none !important;
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+        color: inherit !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:hover,
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:focus,
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:active {
+    .sidebar-header-btn button:hover,
+    .sidebar-header-btn button:focus,
+    .sidebar-header-btn button:active {
         border: none !important;
-        background-color: transparent !important;
         background: transparent !important;
+        background-color: transparent !important;
         box-shadow: none !important;
-        opacity: 0.7;
+        color: inherit !important;
+        opacity: 0.8;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -386,15 +386,14 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    col_sb1, col_sb2 = st.columns([4.2, 1.2])
-    with col_sb1:
-        st.markdown("<h3 style='margin:0; padding:0; line-height:1.2;'>⚙️ 수집 & 필터</h3>", unsafe_allow_html=True)
-    with col_sb2:
-        if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
-            st.session_state["show_admin_modal"] = True
-            st.rerun()
+    # 💡 사이드바 맨 위 '⚙️ 수집 & 필터 설정' 글자 자체를 시크릿 어드민 버튼으로 통합!
+    st.markdown('<div class="sidebar-header-btn">', unsafe_allow_html=True)
+    if st.button("⚙️ 수집 & 필터 설정", help="🔒 관리자 어드민 콘솔 열기"):
+        st.session_state["show_admin_modal"] = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
     saved_pri_kw = get_setting("pri_kw", "통신")
     saved_sec_kw = get_setting("sec_kw", "네트워크, 보안")
 
