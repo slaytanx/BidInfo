@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 가독성 및 사이드바 타이틀 버튼 스타일 정의 ---
+# --- CSS 가독성 및 톱니바퀴 아이콘 노테두리 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -97,29 +97,26 @@ st.markdown("""
     div[data-testid="stDataFrame"] > div {
         overflow-x: auto !important;
     }
-    /* 사이드바 제목 버튼('⚙️ 수집 & 필터 설정')을 헤더 텍스트처럼 감쪽같이 투명화 */
-    .sidebar-header-btn button {
+    /* 톱니바퀴 이모지 아이콘에만 클릭 이벤트를 걸고 테두리/배경/그림자 100% 제거 */
+    .icon-gear-btn button {
         border: none !important;
         background: transparent !important;
         background-color: transparent !important;
         box-shadow: none !important;
         padding: 0px !important;
         margin: 0px !important;
-        font-size: 1.2rem !important;
-        font-weight: 700 !important;
-        color: inherit !important;
-        text-align: left !important;
-        justify-content: flex-start !important;
+        font-size: 1.5rem !important;
+        line-height: 1 !important;
+        outline: none !important;
     }
-    .sidebar-header-btn button:hover,
-    .sidebar-header-btn button:focus,
-    .sidebar-header-btn button:active {
+    .icon-gear-btn button:hover,
+    .icon-gear-btn button:focus,
+    .icon-gear-btn button:active {
         border: none !important;
         background: transparent !important;
         background-color: transparent !important;
         box-shadow: none !important;
-        color: inherit !important;
-        opacity: 0.8;
+        opacity: 0.7;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -386,12 +383,16 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    # 💡 사이드바 맨 위 '⚙️ 수집 & 필터 설정' 글자 자체를 시크릿 어드민 버튼으로 통합!
-    st.markdown('<div class="sidebar-header-btn">', unsafe_allow_html=True)
-    if st.button("⚙️ 수집 & 필터 설정", help="🔒 관리자 어드민 콘솔 열기"):
-        st.session_state["show_admin_modal"] = True
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    # 💡 ⚙️ 아이콘에만 순수 클릭 이벤트를 걸고, 헤더 글자("수집 & 필터 설정")는 본래 폰트크기 원복!
+    col_ic, col_txt = st.columns([0.8, 5.2])
+    with col_ic:
+        st.markdown('<div class="icon-gear-btn">', unsafe_allow_html=True)
+        if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
+            st.session_state["show_admin_modal"] = True
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+    with col_txt:
+        st.markdown("<h3 style='margin:0; padding:0; line-height:1.2; font-size: 1.35rem;'>수집 & 필터 설정</h3>", unsafe_allow_html=True)
     
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
     saved_pri_kw = get_setting("pri_kw", "통신")
