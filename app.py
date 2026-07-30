@@ -98,20 +98,20 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 아이콘 위치를 조금 더 내려서 완벽 수평 피팅 💥 */
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
+    /* 💥 톱니바퀴 아이콘 위치를 조금 더 내려서 완벽 수평 피팅 (사이드바 첫 번째 컬럼 블록으로 격리) 💥 */
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type {
         display: flex !important;
         align-items: center !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child {
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         padding-top: 6px !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button {
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button {
         background: transparent !important;
         background-color: transparent !important;
         border: none !important;
@@ -126,19 +126,19 @@ st.markdown("""
         min-height: 0px !important;
         transform: translateY(5px) !important; /* 톱니바퀴를 조금 더 하향 정렬 */
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button p {
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button p {
         font-size: 1.25rem !important;
         line-height: 1 !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:hover {
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button:hover {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
         opacity: 0.7;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:last-child h3 {
+    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:last-child h3 {
         font-size: 1.3rem !important;
         line-height: 1.2 !important;
         margin: 0 !important;
