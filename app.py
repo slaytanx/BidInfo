@@ -146,6 +146,29 @@ st.markdown("""
         font-weight: 700 !important;
     }
     
+    /* 🚀 수집 시작 버튼 선명한 컬러 강조 스타일 */
+    [data-testid="stSidebar"] button[kind="primary"] {
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    [data-testid="stSidebar"] button[kind="primary"] p {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+    }
+    [data-testid="stSidebar"] button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
+        background-color: #1d4ed8 !important;
+        box-shadow: 0 6px 16px rgba(29, 78, 216, 0.45) !important;
+        transform: translateY(-1px) !important;
+    }
+
     /* 어드민 로그인 폼 외곽선 깔끔 제거 */
     [data-testid="stForm"] {
         border: none !important;
