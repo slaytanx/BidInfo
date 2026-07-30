@@ -624,10 +624,8 @@ with tab1:
         st.subheader("⚙️ 제안 진행 상태(Pipeline) & 상세 리포트 팝업")
         
         if not filtered_df.empty:
-            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([0.35, 4.5, 1.4, 1.35, 1.4])
+            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([0.35, 4.5, 1.4, 1.35, 1.4], vertical_alignment="bottom")
             with col_p1:
-                st.write("")
-                st.write("")
                 is_star = st.checkbox("⭐", value=bool(filtered_df.iloc[0]["starred"]))
             with col_p2:
                 target_bid_label = st.selectbox(
@@ -642,16 +640,12 @@ with tab1:
                 curr_idx = status_options.index(selected_row["status"]) if selected_row["status"] in status_options else 0
                 new_status = st.selectbox("진행상태", status_options, index=curr_idx)
             with col_p4:
-                st.write("")
-                st.write("")
                 if st.button("💾 상태 저장", type="primary", use_container_width=True):
                     update_bid_status(selected_row["bid_id"], new_status, 1 if is_star else 0)
                     upload_db_to_r2(DB_PATH)
                     st.success(f"[{selected_row['title'][:15]}...] 상태 업데이트 완료!")
                     st.rerun()
             with col_p5:
-                st.write("")
-                st.write("")
                 if st.button("🔍 팝업 상세보기", use_container_width=True):
                     st.session_state["modal_target_bid"] = selected_row.to_dict()
                     st.rerun()
