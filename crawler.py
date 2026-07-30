@@ -5,7 +5,6 @@ import urllib3
 import zipfile
 from urllib.parse import urljoin, unquote
 from datetime import datetime, date
-from scrapling import Fetcher, Selector
 
 # SSL 경고 메시지 비활성화
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -116,9 +115,8 @@ def handle_download_and_extract_zip(response, item_folder_path: str, default_nam
 def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, end_date: date, keyword: str = "", site_name: str = "미지정"):
     """
     🎯 범용 지능형 자동 크롤러 (Universal Smart Crawler)
-    정확한 개별 공고 딥링크(cc=b031439:b031439) 생성으로 100% 개별 게시물 직접 연결 지원!
+    파이썬 표준 requests + 정규식 기반으로 클라우드 환경 100% 호환!
     """
-    fetcher = Fetcher()
     session = requests.Session()
     session.verify = False  # SSL 검증 무시
     session.headers.update({
@@ -130,9 +128,9 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
     collected_bids = []
     os.makedirs(base_dir, exist_ok=True)
 
-    print(f"🌐 [{site_name}] 정밀 딥링크 수집 및 파일 다운로드 엔진 가동 - URL: {url}")
+    print(f"🌐 [{site_name}] 크롤링 가동 - URL: {url}")
 
-    # --- 1. 농협 입찰 전용 수집 & 딥링크 생성 ---
+    # --- 1. 농협 입찰 전용 수집 ---
     if "nonghyup.com" in url:
         page = 1
         stop_crawling = False
@@ -144,29 +142,31 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
                 "searchWrd": keyword.strip()
             }
             try:
-                try:
-                    response = fetcher.post(url, data=payload, verify=False)
-                except Exception:
-                    r = session.post(url, data=payload, verify=False)
-                    response = Selector(r.text)
+                r = session.post(url, data=payload, verify=False, timeout=15)
+                html = r.text
             except Exception as e:
                 print(f"⚠️ 농협 페이지 수집 중 네트워크 예외: {e}")
                 break
 
-            rows = response.css("table.list tbody tr") or response.css("table tbody tr")
-            if not rows:
+            tr_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL | re.IGNORECASE)
+            if not tr_matches:
                 break
 
             items_in_page = 0
-            for row in rows:
-                cols = row.css("td")
-                if len(cols) >= 4:
+            for tr in tr_matches:
+                tds = re.findall(r'<td[^>]*>(.*?)</td>', tr, re.DOTALL | re.IGNORECASE)
+                if len(tds) >= 4:
                     items_in_page += 1
-                    num = cols[0].text.strip()
-                    a_tags = cols[1].css("a")
-                    title = a_tags[0].text.strip() if a_tags else cols[1].text.strip()
-                    onclick_attr = a_tags[0].attrib.get("onclick", "") if a_tags else ""
-                    reg_date_str = cols[3].text.strip() if len(cols) > 3 else date.today().strftime("%Y.%m.%d")
+                    num_text = re.sub(r'<[^>]+>', '', tds[0]).strip()
+                    title_td = tds[1]
+                    
+                    title_match = re.search(r'<a[^>]*>(.*?)</a>', title_td, re.DOTALL | re.IGNORECASE)
+                    title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip() if title_match else re.sub(r'<[^>]+>', '', title_td).strip()
+                    
+                    onclick_match = re.search(r'onclick=["\']?([^"\';>]+)["\']?', title_td, re.IGNORECASE)
+                    onclick_attr = onclick_match.group(1) if onclick_match else ""
+                    
+                    reg_date_str = re.sub(r'<[^>]+>', '', tds[3]).strip() if len(tds) > 3 else date.today().strftime("%Y.%m.%d")
                     org = extract_org_from_title(title)
                     reg_date_obj = extract_date_from_text(reg_date_str) or date.today()
 
@@ -215,7 +215,7 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
                             print(f"  └ ⚠️ 농협 상세페이지 첨부파일 파싱 실패: {e}")
 
                     collected_bids.append({
-                        "번호": num,
+                        "번호": num_text,
                         "수집사이트": site_name if site_name != "미지정" else "NH농협",
                         "게시물ID": bid_id,
                         "계열사/조직": org,
@@ -231,18 +231,20 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
 
         return collected_bids
 
-    # --- 2. KB국민은행 입찰 전용 딥링크 생성 및 수집 ---
+    # --- 2. KB국민은행 입찰 전용 딥링크 수집 ---
     if "kbstar.com" in url or "KB" in site_name or "국민" in site_name:
         kb_url = "https://omoney.kbstar.com/quics?page=C018592"
         try:
             r = session.get(kb_url, verify=False, timeout=15)
-            response = Selector(r.text)
+            html = r.text
             
-            bid_links = response.css("a[href*='boardId=648']") or response.css("a[href*='bbsMode=view']")
+            a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*boardId=648[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
+            if not a_matches:
+                a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*bbsMode=view[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
             
-            for idx, a in enumerate(bid_links, 1):
-                title = a.text.strip()
-                href = a.attrib.get("href", "")
+            for idx, (raw_href, raw_title) in enumerate(a_matches, 1):
+                title = re.sub(r'<[^>]+>', '', raw_title).strip()
+                href = raw_href.replace("&amp;", "&")
                 if not title or len(title) < 5 or "페이지" in title:
                     continue
 
@@ -252,7 +254,6 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
                 art_match = re.search(r"articleId=(\d+)", href)
                 bid_id = art_match.group(1) if art_match else f"KB_{idx}"
                 
-                # 💡 KB국민은행 100% 개별 게시글 직행 딥링크 생성 (cc=b031439:b031439 핵심 파라미터 포함)
                 if art_match:
                     origin_link = f"https://omoney.kbstar.com/quics?page=C018592&cc=b031439:b031439&boardId=648&compId=b031439&articleId={bid_id}&bbsMode=view"
                 else:
@@ -305,108 +306,40 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
 
         return collected_bids
 
-    # --- 3. 범용 지능형 수집기 ---
+    # --- 3. 범용 스마트 수집기 ---
     print(f"🤖 [범용 자동 크롤러] 수집 시도: {url}")
     try:
-        try:
-            response = fetcher.get(url, verify=False)
-        except Exception:
-            r = session.get(url, verify=False, timeout=15)
-            response = Selector(r.text)
+        r = session.get(url, verify=False, timeout=15)
+        html = r.text
 
-        tables = response.css("table")
-        if tables:
-            best_table = max(tables, key=lambda t: len(t.css("tbody tr") or t.css("tr")))
-            rows = best_table.css("tbody tr") or best_table.css("tr")
-
-            idx_counter = 1
-            for row in rows:
-                cols = row.css("td")
-                if len(cols) < 2:
+        a_matches = re.findall(r'<a[^>]*href=["\']?([^"\';>]+)["\']?[^>]*>(.*?)</a>', html, re.DOTALL | re.IGNORECASE)
+        idx_counter = 1
+        for href_val, raw_t in a_matches:
+            t = re.sub(r'<[^>]+>', '', raw_t).strip()
+            if len(t) >= 6 and ("공고" in t or "입찰" in t or "구매" in t):
+                if keyword and keyword.lower() not in t.lower():
                     continue
 
-                reg_date_obj = None
-                for col in cols:
-                    extracted_d = extract_date_from_text(col.text.strip())
-                    if extracted_d:
-                        reg_date_obj = extracted_d
-                        break
-                if not reg_date_obj:
-                    reg_date_obj = date.today()
-
-                a_tags = row.css("a")
-                title = ""
-                origin_link = url
-                if a_tags:
-                    for a in a_tags:
-                        t = a.text.strip()
-                        if len(t) >= 4 and not extract_date_from_text(t):
-                            title = t
-                            href_val = a.attrib.get("href", "")
-                            if href_val and not href_val.startswith("javascript"):
-                                origin_link = urljoin(url, href_val)
-                            break
-
-                if not title:
-                    for col in cols:
-                        txt = col.text.strip()
-                        if len(txt) >= 5 and not extract_date_from_text(txt) and not txt.isdigit():
-                            title = txt
-                            break
-
-                if not title or (keyword and keyword.lower() not in title.lower()):
-                    continue
-
-                num = cols[0].text.strip() if cols[0].text.strip().isdigit() else str(idx_counter)
-                idx_counter += 1
-                org = extract_org_from_title(title)
+                reg_date_obj = date.today()
                 formatted_date_str = reg_date_obj.strftime("%Y-%m-%d")
-
-                folder_title = sanitize_filename(title)[:35]
+                folder_title = sanitize_filename(t)[:35]
                 folder_name = f"[{site_name}]_{formatted_date_str}_{folder_title}"
                 item_folder_path = os.path.join(base_dir, folder_name)
                 os.makedirs(item_folder_path, exist_ok=True)
 
+                origin_link = urljoin(url, href_val) if href_val and not href_val.startswith("javascript") else url
+
                 collected_bids.append({
-                    "번호": num,
+                    "번호": str(idx_counter),
                     "수집사이트": site_name,
                     "게시물ID": f"AUTO_{idx_counter}",
-                    "계열사/조직": org,
-                    "제목": title,
+                    "계열사/조직": extract_org_from_title(t),
+                    "제목": t,
                     "등록일": formatted_date_str,
                     "폴더경로": item_folder_path,
                     "원본URL": origin_link
                 })
-        else:
-            bid_links = response.css("a")
-            idx_counter = 1
-            for a in bid_links:
-                t = a.text.strip()
-                href_val = a.attrib.get("href", "")
-                if len(t) >= 6 and ("공고" in t or "입찰" in t or "구매" in t):
-                    if keyword and keyword.lower() not in t.lower():
-                        continue
-
-                    reg_date_obj = date.today()
-                    formatted_date_str = reg_date_obj.strftime("%Y-%m-%d")
-                    folder_title = sanitize_filename(t)[:35]
-                    folder_name = f"[{site_name}]_{formatted_date_str}_{folder_title}"
-                    item_folder_path = os.path.join(base_dir, folder_name)
-                    os.makedirs(item_folder_path, exist_ok=True)
-
-                    origin_link = urljoin(url, href_val) if href_val and not href_val.startswith("javascript") else url
-
-                    collected_bids.append({
-                        "번호": str(idx_counter),
-                        "수집사이트": site_name,
-                        "게시물ID": f"AUTO_{idx_counter}",
-                        "계열사/조직": extract_org_from_title(t),
-                        "제목": t,
-                        "등록일": formatted_date_str,
-                        "폴더경로": item_folder_path,
-                        "원본URL": origin_link
-                    })
-                    idx_counter += 1
+                idx_counter += 1
 
     except Exception as e:
         print(f"❌ 범용 수집 처리 중 오류 발생: {e}")

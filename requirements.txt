@@ -1,8 +1,6 @@
 streamlit>=1.30.0
 pandas>=2.0.0
 requests>=2.30.0
-scrapling>=0.2.0
-curl_cffi>=0.7.0
 pypdf>=4.0.0
 olefile>=0.46
 urllib3>=2.0.0
