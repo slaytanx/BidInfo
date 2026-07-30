@@ -153,7 +153,7 @@ st.markdown("""
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
-        transform: translateY(6px) !important; /* ⚙️ 아이콘 아래로 하향 정렬 */
+        transform: translateY(11px) !important; /* ⚙️ 아이콘 추가 하향 정렬 */
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"] p,
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] p {
