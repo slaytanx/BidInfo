@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 가독성 스타일 정의 ---
+# --- CSS 가독성 및 톱니바퀴 테두리 제거 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -97,10 +97,29 @@ st.markdown("""
     div[data-testid="stDataFrame"] > div {
         overflow-x: auto !important;
     }
-    /* 사이드바 상단 톱니바퀴 높이 정밀 상향 조절 */
+    /* 사이드바 상단 톱니바퀴 높이 및 테두리 완벽 제거 */
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
         align-items: center !important;
         margin-top: -15px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button {
+        border: none !important;
+        background-color: transparent !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0px !important;
+        margin: 0px !important;
+        font-size: 20px !important;
+        outline: none !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:hover,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:focus,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] button:active {
+        border: none !important;
+        background-color: transparent !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        opacity: 0.7;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -367,7 +386,6 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    # 💡 정밀 수평 수직 얼라인 조절
     col_sb1, col_sb2 = st.columns([4.2, 1.2])
     with col_sb1:
         st.markdown("<h3 style='margin:0; padding:0; line-height:1.2;'>⚙️ 수집 & 필터</h3>", unsafe_allow_html=True)
