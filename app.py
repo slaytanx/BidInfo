@@ -146,26 +146,34 @@ st.markdown("""
         font-weight: 700 !important;
     }
     
-    /* 🚀 수집 시작 버튼 선명한 컬러 강조 스타일 */
-    [data-testid="stSidebar"] button[kind="primary"] {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-        background-color: #2563eb !important;
+    /* 💖 LG U+ 마젠타 브랜드 Primary 버튼 & 수집 시작 버튼 강조 스타일 💖 */
+    button[kind="primary"],
+    button[data-testid="stBaseButton-primary"],
+    div[data-testid="stBaseButton-primary"] button,
+    .stButton > button[data-testid="stBaseButton-primary"] {
+        background: linear-gradient(135deg, #FF0084 0%, #C4006B 100%) !important;
+        background-color: #E6007E !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35) !important;
+        box-shadow: 0 4px 14px rgba(230, 0, 126, 0.4) !important;
         transition: all 0.2s ease-in-out !important;
     }
-    [data-testid="stSidebar"] button[kind="primary"] p {
+    button[kind="primary"] p,
+    button[data-testid="stBaseButton-primary"] p,
+    div[data-testid="stBaseButton-primary"] button p,
+    .stButton > button[data-testid="stBaseButton-primary"] p {
         color: #ffffff !important;
         font-weight: 700 !important;
         font-size: 15px !important;
     }
-    [data-testid="stSidebar"] button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%) !important;
-        background-color: #1d4ed8 !important;
-        box-shadow: 0 6px 16px rgba(29, 78, 216, 0.45) !important;
+    button[kind="primary"]:hover,
+    button[data-testid="stBaseButton-primary"]:hover,
+    div[data-testid="stBaseButton-primary"] button:hover {
+        background: linear-gradient(135deg, #D40073 0%, #A80055 100%) !important;
+        background-color: #C4006B !important;
+        box-shadow: 0 6px 18px rgba(230, 0, 126, 0.6) !important;
         transform: translateY(-1px) !important;
     }
 
