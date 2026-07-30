@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 가독성 및 톱니바퀴 버튼 테두리/박스 100% 완전 박멸 스타일 정의 ---
+# --- CSS 가독성 및 수평 수직 정밀 픽셀 정렬 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -98,38 +98,53 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 버튼 회색 박스/테두리/배경/그림자 100% 완전 박멸 💥 */
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button,
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button * {
+    /* 💥 톱니바퀴 아이콘과 수집 & 필터 설정 텍스트 100% 수평 센터 완벽 정렬 💥 */
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"] {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button {
         background: transparent !important;
         background-color: transparent !important;
         border: none !important;
         border-style: none !important;
         outline: none !important;
         box-shadow: none !important;
-        -webkit-box-shadow: none !important;
         padding: 0px !important;
         margin: 0px !important;
         width: auto !important;
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
+        display: flex !important;
+        align-items: center !important;
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button p {
-        font-size: 1.35rem !important;
-        line-height: 1.2 !important;
+        font-size: 1.3rem !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:hover,
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:focus,
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:active {
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:hover {
         background: transparent !important;
-        background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
         opacity: 0.7;
     }
-    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
-        align-items: center !important;
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:last-child h3 {
+        font-size: 1.3rem !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-weight: 700 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -396,14 +411,14 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    # 💡 ⚙️ 아이콘에만 100% 완벽한 노테두리 버튼을 연결하고 폰트 크기를 글자(1.35rem)와 동일하게 맞춤
+    # 💡 ⚙️ 아이콘과 텍스트 수평 센터(baseline) 100% 정밀 맞춤
     col_ic, col_txt = st.columns([0.45, 5.55])
     with col_ic:
         if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
             st.session_state["show_admin_modal"] = True
             st.rerun()
     with col_txt:
-        st.markdown("<h3 style='margin:0; padding:0; line-height:1.2; font-size: 1.35rem;'>수집 & 필터 설정</h3>", unsafe_allow_html=True)
+        st.markdown("### 수집 & 필터 설정")
     
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
     saved_pri_kw = get_setting("pri_kw", "통신")
