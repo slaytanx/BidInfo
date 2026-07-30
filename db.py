@@ -34,7 +34,6 @@ def init_db():
         )
     """)
 
-    # 기존 DB 마이그레이션
     cursor.execute("PRAGMA table_info(bids)")
     existing_cols = [col[1] for col in cursor.fetchall()]
     new_cols = {
@@ -142,6 +141,27 @@ def update_bid_status(bid_id: str, status: str, starred: int):
     conn.commit()
     conn.close()
 
+def delete_bids(bid_ids: List[str]):
+    """지정된 공고 ID 목록을 DB에서 삭제"""
+    if not bid_ids:
+        return
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    placeholders = ",".join(["?"] * len(bid_ids))
+    cursor.execute(f"DELETE FROM bids WHERE bid_id IN ({placeholders})", bid_ids)
+    conn.commit()
+    conn.close()
+
+def reset_all_bids():
+    """모든 공고 데이터 레코드 삭제"""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM bids")
+    conn.commit()
+    conn.close()
+
 def load_all_bids() -> List[dict]:
     """DB에 저장된 전체 공고 목록을 가져옴"""
     init_db()
@@ -186,7 +206,7 @@ def delete_site(site_name: str):
     conn.commit()
     conn.close()
 
-# --- 사용자 설정(키워드/모델) 자동 기억 함수 ---
+# --- 사용자 설정(키워드/모델/엔진) 자동 기억 함수 ---
 def save_setting(key: str, value: str):
     """설정값 저장 (키-값)"""
     init_db()

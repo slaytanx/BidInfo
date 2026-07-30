@@ -59,3 +59,22 @@ def upload_file_to_r2(local_file_path: str, r2_key: str) -> bool:
     except Exception as e:
         print(f"❌ [R2 Storage] 첨부파일 업로드 실패 ({r2_key}): {e}")
         return False
+
+def delete_r2_folder(r2_folder_prefix: str) -> bool:
+    """R2 스토리지 내의 특정 폴더 경로 및 내부 파일 일괄 삭제"""
+    s3 = get_s3_client()
+    if not s3:
+        return False
+    try:
+        if not r2_folder_prefix.endswith("/"):
+            r2_folder_prefix += "/"
+        
+        objects_to_delete = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=r2_folder_prefix)
+        if "Contents" in objects_to_delete:
+            delete_keys = [{"Key": obj["Key"]} for obj in objects_to_delete["Contents"]]
+            s3.delete_objects(Bucket=R2_BUCKET_NAME, Delete={"Objects": delete_keys})
+            print(f"🗑️ [R2 Storage] 폴더 및 내부 파일 삭제 완료: {r2_folder_prefix}")
+        return True
+    except Exception as e:
+        print(f"❌ [R2 Storage] 폴더 삭제 실패 ({r2_folder_prefix}): {e}")
+        return False

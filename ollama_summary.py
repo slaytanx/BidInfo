@@ -1,21 +1,25 @@
 import requests
 import json
 import re
+from llm_manager import generate_llm_response
 
 def analyze_bid_with_ollama(
     title: str, 
     doc_text: str, 
     pri_keywords: str = "통신", 
     sec_keywords: str = "네트워크, 보안", 
-    model_name: str = "gemma4:e4b-mlx"
+    model_name: str = "gemma4:e4b-mlx",
+    engine_configs: list = None
 ) -> dict:
     """
-    Ollama 로컬 LLM을 사용하여:
+    지능형 멀티 LLM 엔진(1차/2차/3차 폴백)을 사용하여:
     1) 사업 요약
     2) 동적 1차/2차 키워드 기준 적합도 점수(0~100점) 및 이유
     3) 입찰 핵심 체크리스트 (마감일시, 제출방식, 필수서류, 자격요건) 추출
     """
-    url = "http://localhost:11434/api/generate"
+    if not engine_configs:
+        engine_configs = [{"provider": "Local Ollama", "api_key": "", "model": model_name}]
+
     truncated_text = doc_text[:4000] if doc_text else "본문 내용 없음 (제목만 참조)"
     
     prompt = f"""
@@ -49,12 +53,6 @@ def analyze_bid_with_ollama(
 참가자격요건: <자격요건>
     """
     
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False
-    }
-    
     summary = "요약 실패"
     fit_score = 0
     fit_reason = "평가 실패"
@@ -64,25 +62,23 @@ def analyze_bid_with_ollama(
     qualifications = "상세 서류 참조"
 
     try:
-        response = requests.post(url, json=payload, timeout=60)
-        if response.status_code == 200:
-            res_text = response.json().get("response", "").strip()
-            
-            summary_match = re.search(r"사업요약:\s*(.+?)(?=\n적합도점수:|\n적합사유:|$)", res_text, re.DOTALL)
-            score_match = re.search(r"적합도점수:\s*(\d+)", res_text)
-            reason_match = re.search(r"적합사유:\s*(.+?)(?=\n제출마감일시:|$)", res_text)
-            deadline_match = re.search(r"제출마감일시:\s*(.+?)(?=\n제출방식:|$)", res_text)
-            sub_type_match = re.search(r"제출방식:\s*(.+?)(?=\n필수제출서류:|$)", res_text)
-            docs_match = re.search(r"필수제출서류:\s*(.+?)(?=\n참가자격요건:|$)", res_text)
-            qual_match = re.search(r"참가자격요건:\s*(.+)", res_text)
+        res_text = generate_llm_response(prompt, engine_configs)
+        
+        summary_match = re.search(r"사업요약:\s*(.+?)(?=\n적합도점수:|\n적합사유:|$)", res_text, re.DOTALL)
+        score_match = re.search(r"적합도점수:\s*(\d+)", res_text)
+        reason_match = re.search(r"적합사유:\s*(.+?)(?=\n제출마감일시:|$)", res_text)
+        deadline_match = re.search(r"제출마감일시:\s*(.+?)(?=\n제출방식:|$)", res_text)
+        sub_type_match = re.search(r"제출방식:\s*(.+?)(?=\n필수제출서류:|$)", res_text)
+        docs_match = re.search(r"필수제출서류:\s*(.+?)(?=\n참가자격요건:|$)", res_text)
+        qual_match = re.search(r"참가자격요건:\s*(.+)", res_text)
 
-            if summary_match: summary = summary_match.group(1).strip()
-            if score_match: fit_score = int(score_match.group(1))
-            if reason_match: fit_reason = reason_match.group(1).strip()
-            if deadline_match: deadline = deadline_match.group(1).strip()
-            if sub_type_match: submit_type = sub_type_match.group(1).strip()
-            if docs_match: required_docs = docs_match.group(1).strip()
-            if qual_match: qualifications = qual_match.group(1).strip()
+        if summary_match: summary = summary_match.group(1).strip()
+        if score_match: fit_score = int(score_match.group(1))
+        if reason_match: fit_reason = reason_match.group(1).strip()
+        if deadline_match: deadline = deadline_match.group(1).strip()
+        if sub_type_match: submit_type = sub_type_match.group(1).strip()
+        if docs_match: required_docs = docs_match.group(1).strip()
+        if qual_match: qualifications = qual_match.group(1).strip()
 
     except Exception as e:
         summary = f"[분석 오류: {e}]"
@@ -97,15 +93,14 @@ def analyze_bid_with_ollama(
         "qualifications": qualifications
     }
 
-def generate_rfp_one_pager(title: str, doc_text: str, model_name: str = "gemma4:e4b-mlx") -> str:
-    """
-    제안요청서(RFP) 1장 분석 리포트 요약 생성
-    (평가배점, 권장목차, 예상예산/기간, 핵심 유의사항)
-    """
+def generate_rfp_one_pager(title: str, doc_text: str, model_name: str = "gemma4:e4b-mlx", engine_configs: list = None) -> str:
+    """제안요청서(RFP) 1장 분석 리포트 요약 생성 (멀티 LLM 지원)"""
     if not doc_text or not doc_text.strip():
         return f"⚠️ **[{title}]** 공고는 첨부 서류(HWP, PDF)가 수집되지 않아 RFP 요약 리포트를 생성할 수 없습니다."
 
-    url = "http://localhost:11434/api/generate"
+    if not engine_configs:
+        engine_configs = [{"provider": "Local Ollama", "api_key": "", "model": model_name}]
+
     truncated_text = doc_text[:4500]
 
     prompt = f"""
@@ -126,26 +121,19 @@ def generate_rfp_one_pager(title: str, doc_text: str, model_name: str = "gemma4:
 깔끔한 마크다운 가독성 양식으로 작성해 주세요.
     """
 
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False
-    }
-
     try:
-        response = requests.post(url, json=payload, timeout=60)
-        if response.status_code == 200:
-            return response.json().get("response", "").strip()
-        return f"[RFP 리포트 생성 실패 코드: {response.status_code}]"
+        return generate_llm_response(prompt, engine_configs)
     except Exception as e:
         return f"[RFP 리포트 오류: {e}]"
 
-def answer_bid_question(title: str, doc_text: str, question: str, model_name: str = "gemma4:e4b-mlx") -> str:
-    """RAG 기반 질문 답변"""
+def answer_bid_question(title: str, doc_text: str, question: str, model_name: str = "gemma4:e4b-mlx", engine_configs: list = None) -> str:
+    """RAG 기반 서류 질의응답 (멀티 LLM 지원)"""
     if not doc_text or not doc_text.strip():
         return f"⚠️ **[{title}] 공고는 수집된 첨부 서류(HWP, PDF 등)가 없습니다.**\n\n공고 제목만 존재하므로 파일 내부의 구체적인 제출 마감시간, 자격요건, 제출 서류 목록 등은 확인할 수 없습니다. 해당 기관 입찰 시스템에서 직접 서류를 확인해 주세요."
 
-    url = "http://localhost:11434/api/generate"
+    if not engine_configs:
+        engine_configs = [{"provider": "Local Ollama", "api_key": "", "model": model_name}]
+
     truncated_text = doc_text[:4000]
 
     prompt = f"""
@@ -165,16 +153,7 @@ def answer_bid_question(title: str, doc_text: str, question: str, model_name: st
 3. 한국어로 깔끔하고 명확하게 정리해서 답변하세요.
     """
 
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False
-    }
-
     try:
-        response = requests.post(url, json=payload, timeout=60)
-        if response.status_code == 200:
-            return response.json().get("response", "").strip()
-        return f"[Ollama 답변 실패 코드: {response.status_code}]"
+        return generate_llm_response(prompt, engine_configs)
     except Exception as e:
         return f"[질의응답 오류: {e}]"

@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import sqlite3
 from datetime import datetime, timedelta, date
 import streamlit as st
@@ -10,9 +11,10 @@ from hwp_parser import process_folder_documents
 from ollama_summary import analyze_bid_with_ollama, answer_bid_question, generate_rfp_one_pager
 from db import (
     init_db, save_bid, load_all_bids, save_site, load_all_sites, 
-    delete_site, save_setting, get_setting, update_bid_status, DB_PATH
+    delete_site, save_setting, get_setting, update_bid_status, 
+    delete_bids, reset_all_bids, DB_PATH
 )
-from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2
+from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2, delete_r2_folder
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
@@ -30,13 +32,13 @@ if "R2_BUCKET_NAME" in st.secrets:
 download_db_from_r2(DB_PATH)
 init_db()
 
-# --- 세션 상태 초기화 (팝업 열기/닫기 및 Q&A 질문 유지 제어용) ---
+# --- 세션 상태 초기화 ---
 if "modal_target_bid" not in st.session_state:
     st.session_state["modal_target_bid"] = None
 if "qa_preset_text" not in st.session_state:
     st.session_state["qa_preset_text"] = ""
 
-# --- 배경색 제거 및 상단 여백 2.5rem 조절, 1행 항목명(헤더) 및 셀 강제 완벽 중앙 정렬 CSS ---
+# --- CSS 가독성 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -86,13 +88,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🎯 입찰 공고 통합 수집 · 분석 · 제안 파이프라인 플랫폼")
-st.caption("공고 수집부터 D-Day 계산, RFP 1장 요약 리포트, 관심 공고 찜하기 및 제안 진행 상태 관리까지 통합 제공합니다.")
+st.caption("공고 수집부터 D-Day 계산, RFP 1장 요약 리포트, 1차/2차/3차 멀티 AI 폴백 엔진 및 어드민 데이터 관리를 통합 제공합니다.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 def calculate_d_day(deadline_str: str) -> str:
-    """다양한 날짜 텍스트 형식에서 날짜를 정밀 추출하여 D-Day 계산"""
+    """D-Day 계산"""
     if not deadline_str:
         return "상세참조"
     
@@ -142,7 +144,7 @@ def calculate_d_day(deadline_str: str) -> str:
     else:
         return f"⏳ D-{diff}"
 
-# 💡 공고 상세 리포트 팝업 모달창 (st.dialog)
+# 💡 공고 상세 리포트 팝업 모달창
 @st.dialog("📄 입찰 공고 상세 리포트", width="large")
 def show_bid_detail_modal(row):
     star_mark = "⭐ 관심공고 찜" if row["starred"] == 1 else "☆ 일반공고"
@@ -182,32 +184,48 @@ def show_bid_detail_modal(row):
         st.session_state["modal_target_bid"] = None
         st.rerun()
 
+# --- 1차/2차/3차 엔진 구성 함수 ---
+def get_configured_engine_list():
+    """DB에 저장된 1차, 2차, 3차 AI 엔진 설정 목록 반환"""
+    e1_p = get_setting("e1_provider", "Google Gemini")
+    e1_k = get_setting("e1_key", os.environ.get("GEMINI_API_KEY", ""))
+    e1_m = get_setting("e1_model", "gemini-1.5-flash")
+
+    e2_p = get_setting("e2_provider", "OpenRouter")
+    e2_k = get_setting("e2_key", os.environ.get("OPENROUTER_API_KEY", ""))
+    e2_m = get_setting("e2_model", "google/gemini-2.0-flash-exp:free")
+
+    e3_p = get_setting("e3_provider", "Local Ollama")
+    e3_k = get_setting("e3_key", "")
+    e3_m = get_setting("e3_model", "gemma4:e4b-mlx")
+
+    return [
+        {"provider": e1_p, "api_key": e1_k, "model": e1_m},
+        {"provider": e2_p, "api_key": e2_k, "model": e2_m},
+        {"provider": e3_p, "api_key": e3_k, "model": e3_m}
+    ]
+
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    st.header("⚙️ 수집 & AI 분석 설정")
+    st.header("⚙️ 수집 & 필터 설정")
     
     saved_pri_kw = get_setting("pri_kw", "통신")
     saved_sec_kw = get_setting("sec_kw", "네트워크, 보안")
-    saved_ollama_model = get_setting("ollama_model", "gemma4:e4b-mlx")
 
     st.subheader("🔑 적합도 가중치 키워드 설정")
-    pri_kw = st.text_input("1차 핵심 분야 (가중치 높음)", value=saved_pri_kw, help="예: 통신, 5G, 전회선, 구축")
-    sec_kw = st.text_input("2차 관련 분야 (가중치 보통)", value=saved_sec_kw, help="예: 네트워크, 보안, 방화벽, 스위치")
-    
-    ollama_model = st.text_input("🤖 Ollama 모델명", value=saved_ollama_model)
+    pri_kw = st.text_input("1차 핵심 분야 (가중치 높음)", value=saved_pri_kw)
+    sec_kw = st.text_input("2차 관련 분야 (가중치 보통)", value=saved_sec_kw)
 
     st.markdown("---")
     st.header("🚀 수집 & 데이터 내보내기")
 
     sites = load_all_sites()
-    
     if "KB국민은행" not in sites:
         save_site("KB국민은행", "https://omoney.kbstar.com/quics?page=C018592")
         sites = load_all_sites()
 
     selected_site_name = st.selectbox("🌐 수집 대상 사이트 선택", list(sites.keys()))
     default_url = sites.get(selected_site_name, "https://www.nonghyup.com/ecenter/bid/bidList.do")
-    
     target_url = st.text_input("수집 대상 URL", value=default_url)
 
     with st.expander("➕ 수집 사이트 신규 저장 / 삭제"):
@@ -219,16 +237,14 @@ with st.sidebar:
             if st.button("💾 사이트 저장", use_container_width=True):
                 if new_site_name.strip() and new_site_url.strip():
                     save_site(new_site_name, new_site_url)
-                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
+                    upload_db_to_r2(DB_PATH)
                     st.success(f"[{new_site_name}] 사이트 저장 완료!")
                     st.rerun()
-                else:
-                    st.warning("사이트 이름과 URL을 입력해 주세요.")
         with col_s2:
             if st.button("🗑️ 사이트 삭제", use_container_width=True):
                 if selected_site_name:
                     delete_site(selected_site_name)
-                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
+                    upload_db_to_r2(DB_PATH)
                     st.success(f"[{selected_site_name}] 삭제 완료!")
                     st.rerun()
 
@@ -242,7 +258,6 @@ with st.sidebar:
         end_d = st.date_input("종료일", today)
 
     search_kw = st.text_input("검색어 필터 (선택)", value="")
-
     st.markdown("<br>", unsafe_allow_html=True)
     
     col_b1, col_b2 = st.columns(2)
@@ -263,14 +278,14 @@ with st.sidebar:
         else:
             st.button("📥 CSV 다운", disabled=True, use_container_width=True)
 
-
 # --- 크롤링 및 AI 분석 실행 ---
 if run_crawl:
     save_setting("pri_kw", pri_kw.strip())
     save_setting("sec_kw", sec_kw.strip())
-    save_setting("ollama_model", ollama_model.strip())
 
-    with st.spinner(f"[{selected_site_name}] 웹페이지 수집, 서류 다운로드 및 AI 분석 진행 중..."):
+    engine_list = get_configured_engine_list()
+
+    with st.spinner(f"[{selected_site_name}] 수집 및 AI 멀티 엔진 분석 진행 중..."):
         bids = crawl_and_download_bids_by_date(
             url=target_url, 
             base_dir=DATA_DIR, 
@@ -281,13 +296,13 @@ if run_crawl:
         )
         
         if not bids:
-            st.warning("지정한 기간 내 수집된 공고가 없거나 페이지 응답이 없습니다.")
+            st.warning("지정한 기간 내 수집된 공고가 없습니다.")
         else:
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             for idx, item in enumerate(bids, 1):
-                status_text.text(f"[{idx}/{len(bids)}] AI 분석 중: {item['제목'][:30]}...")
+                status_text.text(f"[{idx}/{len(bids)}] AI 멀티 엔진 분석 중: {item['제목'][:30]}...")
                 extracted_text = process_folder_documents(item["폴더경로"])
                 
                 ai_res = analyze_bid_with_ollama(
@@ -295,7 +310,7 @@ if run_crawl:
                     doc_text=extracted_text,
                     pri_keywords=pri_kw,
                     sec_keywords=sec_kw,
-                    model_name=ollama_model
+                    engine_configs=engine_list
                 )
                 
                 item["사업요약"] = ai_res["summary"]
@@ -311,65 +326,60 @@ if run_crawl:
                 save_bid(item)
                 progress_bar.progress(idx / len(bids))
 
-            # 💡 수집 완료 후 R2 스토리지에 DB 파일 업로드 동기화
             upload_db_to_r2(DB_PATH)
-
-            st.success(f"🎉 총 {len(bids)}건의 공고 분석 및 R2 스토리지 보관 완료!")
+            st.success(f"🎉 총 {len(bids)}건의 공고 분석 및 R2 스토리지 동기화 완료!")
             st.rerun()
 
-
-# --- 메인 데이터 뷰 ---
+# --- 메인 데이터 뷰 및 탭 ---
 bids_data = load_all_bids()
+df = pd.DataFrame(bids_data) if bids_data else pd.DataFrame()
 
-if not bids_data:
-    st.info("💡 사이드바에서 [🚀 수집 시작] 버튼을 누르면 수집 및 AI 분석이 진행됩니다.")
-else:
-    df = pd.DataFrame(bids_data)
-
+if not df.empty:
     df["D-Day"] = df["deadline"].apply(calculate_d_day)
     df["starred_symbol"] = df["starred"].apply(lambda x: "⭐" if x == 1 else "☆")
 
-    col_f1, col_f2, col_f3, col_f4 = st.columns([1.2, 1.4, 2.0, 1.1])
-    
-    with col_f1:
-        unique_sites = ["전체 사이트"] + sorted(list(df["site_name"].unique()))
-        selected_site_filter = st.selectbox("🌐 수집 사이트 선택", options=unique_sites)
+col_f1, col_f2, col_f3, col_f4 = st.columns([1.2, 1.4, 2.0, 1.1])
 
-    with col_f2:
-        min_score = st.slider("최저 적합도 점수", 0, 100, 0, step=10)
-    with col_f3:
-        filter_title = st.text_input("공고 제목 검색", "")
-    with col_f4:
-        st.markdown('<div style="padding-top: 35px;"></div>', unsafe_allow_html=True)
-        only_starred = st.checkbox("⭐ 찜한 공고만", value=False)
+with col_f1:
+    unique_sites = ["전체 사이트"] + (sorted(list(df["site_name"].unique())) if not df.empty else [])
+    selected_site_filter = st.selectbox("🌐 수집 사이트 선택", options=unique_sites)
 
-    filtered_df = df.copy()
-    
+with col_f2:
+    min_score = st.slider("최저 적합도 점수", 0, 100, 0, step=10)
+with col_f3:
+    filter_title = st.text_input("공고 제목 검색", "")
+with col_f4:
+    st.markdown('<div style="padding-top: 35px;"></div>', unsafe_allow_html=True)
+    only_starred = st.checkbox("⭐ 찜한 공고만", value=False)
+
+filtered_df = df.copy() if not df.empty else pd.DataFrame()
+
+if not filtered_df.empty:
     if selected_site_filter != "전체 사이트":
         filtered_df = filtered_df[filtered_df["site_name"] == selected_site_filter]
-
     if min_score > 0:
         filtered_df = filtered_df[filtered_df["fit_score"] >= min_score]
-        
     if filter_title:
         filtered_df = filtered_df[filtered_df["title"].str.contains(filter_title, case=False, na=False)]
-        
     if only_starred:
         filtered_df = filtered_df[filtered_df["starred"] == 1]
 
     filtered_df["num_int"] = pd.to_numeric(filtered_df["num"], errors='coerce').fillna(0)
     filtered_df = filtered_df.sort_values(by=["reg_date", "num_int"], ascending=[False, False])
 
-    tab1, tab2, tab3 = st.tabs([
-        "📊 입찰 공고 & 제안 파이프라인", 
-        "📋 핵심 체크리스트 & RFP 1장 요약", 
-        "💬 AI 서류 묻고 답하기 (Q&A)"
-    ])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 입찰 공고 & 제안 파이프라인", 
+    "📋 핵심 체크리스트 & RFP 1장 요약", 
+    "💬 AI 서류 묻고 답하기 (Q&A)",
+    "🔒 어드민 (시스템 관리자)"
+])
 
-    # TAB 1: 대시보드 표
-    with tab1:
-        st.subheader("📋 전체 수집 공고 목록")
-
+# TAB 1: 대시보드 표
+with tab1:
+    st.subheader("📋 전체 수집 공고 목록")
+    if filtered_df.empty:
+        st.info("💡 사이드바에서 [🚀 수집 시작] 버튼을 누르거나 필터 조건을 변경해 주세요.")
+    else:
         disp_df = filtered_df[["num", "starred_symbol", "status", "D-Day", "site_name", "org", "title", "origin_url", "reg_date", "fit_score", "fit_reason", "summary"]].copy()
         disp_df.columns = ["번호", "찜", "진행상태", "D-Day", "수집사이트", "계열사", "제목", "원본글", "등록일", "적합도", "적합사유", "사업요약"]
         disp_df.index = range(1, len(disp_df) + 1)
@@ -388,13 +398,7 @@ else:
                 "제목": st.column_config.TextColumn("제목", alignment="left", width=420),
                 "원본글": st.column_config.LinkColumn("원본글", display_text="🔗 바로가기", width=95),
                 "등록일": st.column_config.TextColumn("등록일", alignment="center", width=95),
-                "적합도": st.column_config.ProgressColumn(
-                    "적합도",
-                    format="%d점",
-                    min_value=0,
-                    max_value=100,
-                    width=85
-                ),
+                "적합도": st.column_config.ProgressColumn("적합도", format="%d점", min_value=0, max_value=100, width=85),
                 "적합사유": st.column_config.TextColumn("적합사유", alignment="left", width=200),
                 "사업요약": st.column_config.TextColumn("사업요약", alignment="left", width=350)
             }
@@ -405,12 +409,10 @@ else:
         
         if not filtered_df.empty:
             col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([0.35, 4.5, 1.4, 1.35, 1.4])
-            
             with col_p1:
-                st.write("") # 높이 맞춤
+                st.write("")
                 st.write("")
                 is_star = st.checkbox("⭐", value=bool(filtered_df.iloc[0]["starred"]))
-
             with col_p2:
                 target_bid_label = st.selectbox(
                     "상태 변경 및 상세 리포트 팝업 공고 선택", 
@@ -419,121 +421,220 @@ else:
                 )
                 selected_num = target_bid_label.split("]")[1].replace("[", "").strip()
                 selected_row = filtered_df[filtered_df["num"] == selected_num].iloc[0]
-
             with col_p3:
                 status_options = ["검토중", "제안작성중", "제출완료", "낙찰", "포기"]
                 curr_idx = status_options.index(selected_row["status"]) if selected_row["status"] in status_options else 0
                 new_status = st.selectbox("진행상태", status_options, index=curr_idx)
-
             with col_p4:
-                st.write("") # 높이 맞춤
+                st.write("")
                 st.write("")
                 if st.button("💾 상태 저장", type="primary", use_container_width=True):
                     update_bid_status(selected_row["bid_id"], new_status, 1 if is_star else 0)
-                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
-                    st.success(f"[{selected_row['title'][:15]}...] 상태가 업데이트되었습니다!")
+                    upload_db_to_r2(DB_PATH)
+                    st.success(f"[{selected_row['title'][:15]}...] 상태 업데이트 완료!")
                     st.rerun()
-
             with col_p5:
-                st.write("") # 높이 맞춤
+                st.write("")
                 st.write("")
                 if st.button("🔍 팝업 상세보기", use_container_width=True):
                     st.session_state["modal_target_bid"] = selected_row.to_dict()
                     st.rerun()
 
-        # 💡 세션 스테이트 기반 팝업 호출
         if st.session_state["modal_target_bid"] is not None:
             show_bid_detail_modal(st.session_state["modal_target_bid"])
 
-    # TAB 2: 핵심 체크리스트 & RFP 1장 요약 리포트
-    with tab2:
-        st.subheader("📋 입찰 서류 체크리스트 & 📄 RFP 1장 요약 리포트")
-        st.caption("공고별 핵심 서류 요구사항 및 AI 작성 RFP 원페이지 가이드 리포트를 확인합니다.")
-
-        if filtered_df.empty:
-            st.warning("필터 조건에 일치하는 공고가 없습니다.")
-        else:
-            for _, row in filtered_df.iterrows():
-                star_mark = "⭐ " if row['starred'] == 1 else ""
-                expander_title = f"{star_mark}[{row['status']}] [{row['D-Day']}] [{row['org']}] {row['title']} (적합도: {row['fit_score']}점)"
-                
-                with st.expander(expander_title, expanded=True if row['fit_score']>=70 else False):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f"⏰ **제출 마감일시**: `{row.get('deadline', '상세 서류 참조')}` ({row['D-Day']})")
-                        st.markdown(f"📨 **제출 방식**: `{row.get('submit_type', '전자/방문')}`")
-                    with col2:
-                        st.markdown(f"📜 **필수 제출 서류**: `{row.get('required_docs', '제안서 등')}`")
-                        st.markdown(f"✅ **핵심 자격 요건**: `{row.get('qualifications', '상세 서류 참조')}`")
-                    
-                    orig_link = row.get("origin_url", "")
-                    if orig_link:
-                        st.markdown(f"🔗 **원본 공고 게시글 링크**: [{row['title']}]({orig_link})")
-
-                    st.markdown(f"💡 **AI 사업 요약**: {row['summary']}")
-                    st.markdown(f"🎯 **적합 사유**: {row['fit_reason']}")
-
-                    st.markdown("---")
-                    
-                    rfp_btn_key = f"rfp_btn_{row['bid_id']}"
-                    if st.button(f"📄 [{row['title'][:20]}...] RFP 1장 요약 리포트 생성", key=rfp_btn_key):
-                        with st.spinner("첨부 서류를 분석하여 RFP 1장 요약 리포트를 생성 중입니다..."):
-                            doc_text = process_folder_documents(row["folder_path"])
-                            rfp_report = generate_rfp_one_pager(row["title"], doc_text, ollama_model)
-                            st.markdown("#### 📄 RFP 1장 요약 리포트:")
-                            st.info(rfp_report)
-
-    # TAB 3: AI 서류 Q&A
-    with tab3:
-        st.subheader("🤖 입찰 첨부 서류 기반 AI 대화")
-        
-        if filtered_df.empty:
-            st.warning("필터 조건에 일치하는 공고가 없습니다.")
-        else:
-            bid_options = {f"[{b['org']}] {b['title']} ({b['reg_date']}) - {b['fit_score']}점": b for _, b in filtered_df.iterrows()}
-            selected_label = st.selectbox("질문할 입찰 공고 선택", list(bid_options.keys()))
-            selected_bid = bid_options[selected_label]
-
-            st.info(f"📌 **선택된 공고**: {selected_bid['title']}\n\n💡 **AI 요약**: {selected_bid['summary']}")
-
-            folder_path = selected_bid["folder_path"]
-            with st.spinner("해당 공고의 첨부 서류 텍스트를 로드 중입니다..."):
-                doc_text = process_folder_documents(folder_path)
-
-            if doc_text and doc_text.strip():
-                st.success(f"📄 서류 텍스트 읽기 완료! (총 {len(doc_text)}자 추출됨)")
-            else:
-                st.caption("ℹ️ **안내**: 첨부서류 파일이 없는 공고입니다. (공고 제목과 AI 요약 정보를 기반으로 AI가 답변을 작성합니다)")
-
-            st.markdown("---")
+# TAB 2: 핵심 체크리스트 & RFP 1장 요약
+with tab2:
+    st.subheader("📋 입찰 서류 체크리스트 & 📄 RFP 1장 요약 리포트")
+    if filtered_df.empty:
+        st.warning("필터 조건에 일치하는 공고가 없습니다.")
+    else:
+        engine_list = get_configured_engine_list()
+        for _, row in filtered_df.iterrows():
+            star_mark = "⭐ " if row['starred'] == 1 else ""
+            expander_title = f"{star_mark}[{row['status']}] [{row['D-Day']}] [{row['org']}] {row['title']} (적합도: {row['fit_score']}점)"
             
-            col_q1, col_q2, col_q3 = st.columns(3)
-            with col_q1:
-                if st.button("📌 필수 제출 서류 목록이 뭐야?"):
-                    st.session_state["qa_preset_text"] = "이 사업의 필수 제출 서류 목록과 입찰 참가 자격 요건을 알려줘."
-                    st.rerun()
-            with col_q2:
-                if st.button("⏰ 입찰 마감일시와 장소는?"):
-                    st.session_state["qa_preset_text"] = "입찰 서류 제출 마감 일시와 개찰 장소를 알려줘."
-                    st.rerun()
-            with col_q3:
-                if st.button("💰 사업 예산 및 수행 기간은?"):
-                    st.session_state["qa_preset_text"] = "이 사업의 예상 예산(사업비) 및 수행 기간은 얼마인가요?"
-                    st.rerun()
+            with st.expander(expander_title, expanded=True if row['fit_score']>=70 else False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"⏰ **제출 마감일시**: `{row.get('deadline', '상세 서류 참조')}` ({row['D-Day']})")
+                    st.markdown(f"📨 **제출 방식**: `{row.get('submit_type', '전자/방문')}`")
+                with col2:
+                    st.markdown(f"📜 **필수 제출 서류**: `{row.get('required_docs', '제안서 등')}`")
+                    st.markdown(f"✅ **핵심 자격 요건**: `{row.get('qualifications', '상세 서류 참조')}`")
+                
+                orig_link = row.get("origin_url", "")
+                if orig_link:
+                    st.markdown(f"🔗 **원본 공고 게시글 링크**: [{row['title']}]({orig_link})")
 
-            user_question = st.text_input("질문을 입력하세요:", value=st.session_state["qa_preset_text"])
+                st.markdown(f"💡 **AI 사업 요약**: {row['summary']}")
+                st.markdown(f"🎯 **적합 사유**: {row['fit_reason']}")
 
-            if st.button("🚀 AI 질문 전송", type="primary"):
-                if not user_question.strip():
-                    st.warning("질문 내용을 입력해주세요.")
+                st.markdown("---")
+                rfp_btn_key = f"rfp_btn_{row['bid_id']}"
+                if st.button(f"📄 [{row['title'][:20]}...] RFP 1장 요약 리포트 생성", key=rfp_btn_key):
+                    with st.spinner("첨부 서류를 분석하여 RFP 1장 요약 리포트를 생성 중입니다..."):
+                        doc_text = process_folder_documents(row["folder_path"])
+                        rfp_report = generate_rfp_one_pager(row["title"], doc_text, engine_configs=engine_list)
+                        st.markdown("#### 📄 RFP 1장 요약 리포트:")
+                        st.info(rfp_report)
+
+# TAB 3: AI 서류 Q&A
+with tab3:
+    st.subheader("🤖 입찰 첨부 서류 기반 AI 대화")
+    if filtered_df.empty:
+        st.warning("필터 조건에 일치하는 공고가 없습니다.")
+    else:
+        engine_list = get_configured_engine_list()
+        bid_options = {f"[{b['org']}] {b['title']} ({b['reg_date']}) - {b['fit_score']}점": b for _, b in filtered_df.iterrows()}
+        selected_label = st.selectbox("질문할 입찰 공고 선택", list(bid_options.keys()))
+        selected_bid = bid_options[selected_label]
+
+        st.info(f"📌 **선택된 공고**: {selected_bid['title']}\n\n💡 **AI 요약**: {selected_bid['summary']}")
+
+        folder_path = selected_bid["folder_path"]
+        with st.spinner("해당 공고의 첨부 서류 텍스트를 로드 중입니다..."):
+            doc_text = process_folder_documents(folder_path)
+
+        if doc_text and doc_text.strip():
+            st.success(f"📄 서류 텍스트 읽기 완료! (총 {len(doc_text)}자 추출됨)")
+        else:
+            st.caption("ℹ️ **안내**: 첨부서류 파일이 없는 공고입니다.")
+
+        st.markdown("---")
+        col_q1, col_q2, col_q3 = st.columns(3)
+        with col_q1:
+            if st.button("📌 필수 제출 서류 목록이 뭐야?"):
+                st.session_state["qa_preset_text"] = "이 사업의 필수 제출 서류 목록과 입찰 참가 자격 요건을 알려줘."
+                st.rerun()
+        with col_q2:
+            if st.button("⏰ 입찰 마감일시와 장소는?"):
+                st.session_state["qa_preset_text"] = "입찰 서류 제출 마감 일시와 개찰 장소를 알려줘."
+                st.rerun()
+        with col_q3:
+            if st.button("💰 사업 예산 및 수행 기간은?"):
+                st.session_state["qa_preset_text"] = "이 사업의 예상 예산(사업비) 및 수행 기간은 얼마인가요?"
+                st.rerun()
+
+        user_question = st.text_input("질문을 입력하세요:", value=st.session_state["qa_preset_text"])
+
+        if st.button("🚀 AI 질문 전송", type="primary"):
+            if not user_question.strip():
+                st.warning("질문 내용을 입력해주세요.")
+            else:
+                st.session_state["qa_preset_text"] = user_question.strip()
+                with st.spinner("AI 엔진이 답변을 작성 중입니다..."):
+                    answer = answer_bid_question(
+                        title=selected_bid['title'], 
+                        doc_text=doc_text if doc_text else f"공고 제목: {selected_bid['title']}\n사업 요약: {selected_bid['summary']}", 
+                        question=user_question, 
+                        engine_configs=engine_list
+                    )
+                    st.markdown("### 🤖 AI 답변:")
+                    st.write(answer)
+
+# TAB 4: 🔒 어드민 (시스템 관리자)
+with tab4:
+    st.subheader("🔒 시스템 관리자 센터 (어드민)")
+    st.caption("AI 1차/2차/3차 폴백 엔진 설정 및 불필요한 공고/첨부파일 완전 삭제를 관리합니다.")
+
+    # 1. AI 1차/2차/3차 폴백 엔진 설정
+    st.markdown("### 🤖 AI 멀티 엔진 (1차 · 2차 · 3차 폴백) 설정")
+    st.caption("1차 엔진 실패 시 2차 엔진으로, 2차 엔진 실패 시 3차 엔진으로 자동 전환되어 100% 무중단 요약을 수행합니다.")
+
+    provider_options = ["Google Gemini", "OpenRouter", "NVIDIA NIM", "Local Ollama", "사용 안함"]
+
+    col_e1, col_e2, col_e3 = st.columns(3)
+    with col_e1:
+        st.markdown("#### 🥇 1차 엔진 (기본)")
+        e1_provider = st.selectbox("1차 프로바이더", provider_options, index=provider_options.index(get_setting("e1_provider", "Google Gemini")))
+        e1_key = st.text_input("1차 API Key", value=get_setting("e1_key", os.environ.get("GEMINI_API_KEY", "")), type="password")
+        e1_model = st.text_input("1차 모델명", value=get_setting("e1_model", "gemini-1.5-flash"))
+
+    with col_e2:
+        st.markdown("#### 🥈 2차 엔진 (자동 폴백)")
+        e2_provider = st.selectbox("2차 프로바이더", provider_options, index=provider_options.index(get_setting("e2_provider", "OpenRouter")))
+        e2_key = st.text_input("2차 API Key", value=get_setting("e2_key", os.environ.get("OPENROUTER_API_KEY", "")), type="password")
+        e2_model = st.text_input("2차 모델명", value=get_setting("e2_model", "google/gemini-2.0-flash-exp:free"))
+
+    with col_e3:
+        st.markdown("#### 🥉 3차 엔진 (최종 폴백)")
+        e3_provider = st.selectbox("3차 프로바이더", provider_options, index=provider_options.index(get_setting("e3_provider", "Local Ollama")))
+        e3_key = st.text_input("3차 API Key", value=get_setting("e3_key", ""), type="password")
+        e3_model = st.text_input("3차 모델명", value=get_setting("e3_model", "gemma4:e4b-mlx"))
+
+    if st.button("💾 AI 멀티 엔진 설정 저장", type="primary", use_container_width=True):
+        save_setting("e1_provider", e1_provider)
+        save_setting("e1_key", e1_key)
+        save_setting("e1_model", e1_model)
+
+        save_setting("e2_provider", e2_provider)
+        save_setting("e2_key", e2_key)
+        save_setting("e2_model", e2_model)
+
+        save_setting("e3_provider", e3_provider)
+        save_setting("e3_key", e3_key)
+        save_setting("e3_model", e3_model)
+
+        upload_db_to_r2(DB_PATH)
+        st.success("🎉 1차, 2차, 3차 AI 멀티 엔진 설정이 DB 및 Cloudflare R2 스토리지에 저장되었습니다!")
+
+    st.markdown("---")
+
+    # 2. 불필요한 데이터 & 첨부파일 통합 삭제 센터
+    st.markdown("### 🗑️ 불필요 데이터 & 첨부파일 통합 삭제 센터")
+    st.caption("선택한 공고를 DB에서 제거하고, 컴퓨터 로컬 폴더 및 Cloudflare R2 스토리지 내부 파일까지 한 번에 깨끗이 지웁니다.")
+
+    all_bids_for_admin = load_all_bids()
+    if not all_bids_for_admin:
+        st.info("현재 저장된 공고 데이터가 없습니다.")
+    else:
+        bid_map = {f"[{b['num']}] [{b['org']}] {b['title']} ({b['reg_date']})": b for b in all_bids_for_admin}
+        selected_del_labels = st.multiselect("🗑️ 삭제할 공고 목록 선택 (다중 선택 가능)", options=list(bid_map.keys()))
+
+        col_del1, col_del2 = st.columns([2, 1])
+        with col_del1:
+            if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", use_container_width=True):
+                if not selected_del_labels:
+                    st.warning("삭제할 공고를 선택해 주세요.")
                 else:
-                    st.session_state["qa_preset_text"] = user_question.strip()
-                    with st.spinner("로컬 Ollama LLM이 답변을 작성 중입니다..."):
-                        answer = answer_bid_question(
-                            title=selected_bid['title'], 
-                            doc_text=doc_text if doc_text else f"공고 제목: {selected_bid['title']}\n사업 요약: {selected_bid['summary']}", 
-                            question=user_question, 
-                            model_name=ollama_model
-                        )
-                        st.markdown("### 🤖 AI 답변:")
-                        st.write(answer)
+                    del_ids = []
+                    for label in selected_del_labels:
+                        bid_item = bid_map[label]
+                        del_ids.append(bid_item["bid_id"])
+                        
+                        # 1) 로컬 폴더 삭제
+                        folder_p = bid_item.get("folder_path", "")
+                        if folder_p and os.path.exists(folder_p):
+                            try:
+                                shutil.rmtree(folder_p)
+                                print(f"🗑️ 로컬 폴더 삭제: {folder_p}")
+                            except Exception as ex:
+                                print(f"⚠️ 로컬 폴더 삭제 실패: {ex}")
+
+                        # 2) Cloudflare R2 스토리지 폴더 삭제
+                        if folder_p:
+                            folder_bname = os.path.basename(folder_p)
+                            delete_r2_folder(f"data/{folder_bname}")
+
+                    # 3) DB 레코드 삭제
+                    delete_bids(del_ids)
+                    upload_db_to_r2(DB_PATH)
+
+                    st.success(f"🎉 선택한 {len(del_ids)}건의 공고 및 로컬/R2 첨부파일이 깨끗하게 삭제되었습니다!")
+                    st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("💣 [주의] 전체 공고 및 파일 클린 포맷"):
+            st.warning("⚠️ 저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
+            if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행"):
+                reset_all_bids()
+                if os.path.exists(DATA_DIR):
+                    for item in os.listdir(DATA_DIR):
+                        item_p = os.path.join(DATA_DIR, item)
+                        if item != "bids_history.db" and os.path.isdir(item_p):
+                            shutil.rmtree(item_p)
+                delete_r2_folder("data")
+                upload_db_to_r2(DB_PATH)
+                st.success("💥 전체 공고 및 첨부파일이 초기화 포맷 되었습니다!")
+                st.rerun()
