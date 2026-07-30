@@ -18,18 +18,21 @@ from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2, 
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
-# 💡 Streamlit Secrets 예외 무풍지대 안전 로드 (로컬 & 클라우드 둘 다 100% 동작)
+# 💡 Streamlit Secrets 예외 무풍지대 안전 로드 (StreamlitSecretNotFoundError 완벽 차단)
+admin_pass_secret = None
 try:
-    if "R2_ACCESS_KEY_ID" in st.secrets:
-        os.environ["R2_ACCESS_KEY_ID"] = st.secrets["R2_ACCESS_KEY_ID"]
-    if "R2_SECRET_ACCESS_KEY" in st.secrets:
-        os.environ["R2_SECRET_ACCESS_KEY"] = st.secrets["R2_SECRET_ACCESS_KEY"]
-    if "R2_ENDPOINT_URL" in st.secrets:
-        os.environ["R2_ENDPOINT_URL"] = st.secrets["R2_ENDPOINT_URL"]
-    if "R2_BUCKET_NAME" in st.secrets:
-        os.environ["R2_BUCKET_NAME"] = st.secrets["R2_BUCKET_NAME"]
-    admin_pass_secret = st.secrets.get("ADMIN_PASSWORD", None)
-except Exception:
+    sec = getattr(st, "secrets", None)
+    if sec is not None:
+        if "R2_ACCESS_KEY_ID" in sec:
+            os.environ["R2_ACCESS_KEY_ID"] = sec["R2_ACCESS_KEY_ID"]
+        if "R2_SECRET_ACCESS_KEY" in sec:
+            os.environ["R2_SECRET_ACCESS_KEY"] = sec["R2_SECRET_ACCESS_KEY"]
+        if "R2_ENDPOINT_URL" in sec:
+            os.environ["R2_ENDPOINT_URL"] = sec["R2_ENDPOINT_URL"]
+        if "R2_BUCKET_NAME" in sec:
+            os.environ["R2_BUCKET_NAME"] = sec["R2_BUCKET_NAME"]
+        admin_pass_secret = sec.get("ADMIN_PASSWORD", None)
+except BaseException:
     admin_pass_secret = None
 
 ADMIN_PASSWORD = admin_pass_secret or get_setting("admin_password", "admin123!")
