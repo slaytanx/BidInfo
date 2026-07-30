@@ -97,6 +97,11 @@ st.markdown("""
     div[data-testid="stDataFrame"] > div {
         overflow-x: auto !important;
     }
+    /* 사이드바 상단 톱니바퀴 높이 정밀 상향 조절 */
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        margin-top: -15px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -362,15 +367,16 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    col_sb1, col_sb2 = st.columns([5, 1.2])
+    # 💡 정밀 수평 수직 얼라인 조절
+    col_sb1, col_sb2 = st.columns([4.2, 1.2])
     with col_sb1:
-        st.header("⚙️ 수집 & 필터 설정")
+        st.markdown("<h3 style='margin:0; padding:0; line-height:1.2;'>⚙️ 수집 & 필터</h3>", unsafe_allow_html=True)
     with col_sb2:
-        st.markdown('<div style="padding-top: 10px;"></div>', unsafe_allow_html=True)
         if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
             st.session_state["show_admin_modal"] = True
             st.rerun()
     
+    st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
     saved_pri_kw = get_setting("pri_kw", "통신")
     saved_sec_kw = get_setting("sec_kw", "네트워크, 보안")
 
