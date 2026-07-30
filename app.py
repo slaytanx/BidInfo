@@ -18,17 +18,21 @@ from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2, 
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
-# 💡 Streamlit Secrets에서 R2 스토리지 및 어드민 비밀번호 환경변수 로드
-if "R2_ACCESS_KEY_ID" in st.secrets:
-    os.environ["R2_ACCESS_KEY_ID"] = st.secrets["R2_ACCESS_KEY_ID"]
-if "R2_SECRET_ACCESS_KEY" in st.secrets:
-    os.environ["R2_SECRET_ACCESS_KEY"] = st.secrets["R2_SECRET_ACCESS_KEY"]
-if "R2_ENDPOINT_URL" in st.secrets:
-    os.environ["R2_ENDPOINT_URL"] = st.secrets["R2_ENDPOINT_URL"]
-if "R2_BUCKET_NAME" in st.secrets:
-    os.environ["R2_BUCKET_NAME"] = st.secrets["R2_BUCKET_NAME"]
+# 💡 Streamlit Secrets 예외 무풍지대 안전 로드 (로컬 & 클라우드 둘 다 100% 동작)
+try:
+    if "R2_ACCESS_KEY_ID" in st.secrets:
+        os.environ["R2_ACCESS_KEY_ID"] = st.secrets["R2_ACCESS_KEY_ID"]
+    if "R2_SECRET_ACCESS_KEY" in st.secrets:
+        os.environ["R2_SECRET_ACCESS_KEY"] = st.secrets["R2_SECRET_ACCESS_KEY"]
+    if "R2_ENDPOINT_URL" in st.secrets:
+        os.environ["R2_ENDPOINT_URL"] = st.secrets["R2_ENDPOINT_URL"]
+    if "R2_BUCKET_NAME" in st.secrets:
+        os.environ["R2_BUCKET_NAME"] = st.secrets["R2_BUCKET_NAME"]
+    admin_pass_secret = st.secrets.get("ADMIN_PASSWORD", None)
+except Exception:
+    admin_pass_secret = None
 
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", get_setting("admin_password", "admin123!"))
+ADMIN_PASSWORD = admin_pass_secret or get_setting("admin_password", "admin123!")
 
 # 💡 R2 스토리지에서 최신 bids_history.db 영구 데이터 다운로드 동기화
 download_db_from_r2(DB_PATH)
