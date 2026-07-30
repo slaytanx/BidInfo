@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 가독성 및 톱니바퀴 아이콘 노테두리 스타일 정의 ---
+# --- CSS 테두리 및 회색 박스 100% 완전 박멸 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -97,25 +97,32 @@ st.markdown("""
     div[data-testid="stDataFrame"] > div {
         overflow-x: auto !important;
     }
-    /* 톱니바퀴 이모지 아이콘에만 클릭 이벤트를 걸고 테두리/배경/그림자 100% 제거 */
-    .icon-gear-btn button {
-        border: none !important;
-        background: transparent !important;
+    
+    /* 💥 톱니바퀴 아이콘 테두리/외곽선/회색배경 100% 완전 박멸 💥 */
+    div[data-testid="stSidebar"] .icon-gear-btn button,
+    div[data-testid="stSidebar"] .icon-gear-btn button * {
+        border: 0px none transparent !important;
+        border-style: none !important;
+        outline: none !important;
+        background: none !important;
         background-color: transparent !important;
         box-shadow: none !important;
+        -webkit-box-shadow: none !important;
         padding: 0px !important;
         margin: 0px !important;
         font-size: 1.5rem !important;
         line-height: 1 !important;
-        outline: none !important;
     }
-    .icon-gear-btn button:hover,
-    .icon-gear-btn button:focus,
-    .icon-gear-btn button:active {
-        border: none !important;
-        background: transparent !important;
+    div[data-testid="stSidebar"] .icon-gear-btn button:hover,
+    div[data-testid="stSidebar"] .icon-gear-btn button:focus,
+    div[data-testid="stSidebar"] .icon-gear-btn button:active {
+        border: 0px none transparent !important;
+        border-style: none !important;
+        outline: none !important;
+        background: none !important;
         background-color: transparent !important;
         box-shadow: none !important;
+        -webkit-box-shadow: none !important;
         opacity: 0.7;
     }
 </style>
@@ -383,8 +390,7 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    # 💡 ⚙️ 아이콘에만 순수 클릭 이벤트를 걸고, 헤더 글자("수집 & 필터 설정")는 본래 폰트크기 원복!
-    col_ic, col_txt = st.columns([0.8, 5.2])
+    col_ic, col_txt = st.columns([0.7, 5.3])
     with col_ic:
         st.markdown('<div class="icon-gear-btn">', unsafe_allow_html=True)
         if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
