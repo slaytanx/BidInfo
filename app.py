@@ -56,8 +56,13 @@ st.markdown("""
 <style>
     @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
 
-    html, body, [class*="css"], [class*="st-"], .stApp, h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, label {
+    html, body, .stApp, h1, h2, h3, h4, h5, h6, p, input, select, textarea, label, div.stMarkdown, div.stButton > button, div[data-testid="stTable"] {
         font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif !important;
+    }
+
+    /* 💡 Streamlit Material Symbols 아이콘 폰트 정상 복원 */
+    [data-testid="stIcon"], [class*="material-symbols"], i, span[aria-hidden="true"], [data-testid="stSidebarCollapseButton"] *, [data-testid="stExpanderToggleIcon"] * {
+        font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Source Sans Pro', sans-serif !important;
     }
 
     .stApp, .main, [data-testid="stHeader"] {
