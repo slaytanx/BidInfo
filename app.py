@@ -54,6 +54,12 @@ if "show_admin_modal" not in st.session_state:
 # --- CSS 가독성 및 수평 수직 정밀 픽셀 정렬 스타일 정의 ---
 st.markdown("""
 <style>
+    @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+    html, body, [class*="css"], [class*="st-"], .stApp, h1, h2, h3, h4, h5, h6, p, button, input, select, textarea, label {
+        font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif !important;
+    }
+
     .stApp, .main, [data-testid="stHeader"] {
         background-color: transparent !important;
     }
