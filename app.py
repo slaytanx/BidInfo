@@ -138,6 +138,37 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
+    /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 💥 */
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"],
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        border-style: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        padding: 0px !important;
+        margin: 0px !important;
+        width: auto !important;
+        min-width: 0px !important;
+        height: auto !important;
+        min-height: 0px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"] p,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] p {
+        font-size: 1.25rem !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"]:hover,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"]:hover {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        opacity: 0.7;
+    }
+
     /* 어드민 로그인 폼 외곽선 깔끔 제거 */
     [data-testid="stForm"] {
         border: none !important;
