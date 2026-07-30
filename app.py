@@ -138,7 +138,7 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 💥 */
+    /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 & 하향 정렬 💥 */
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"],
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] {
         background: transparent !important;
@@ -153,6 +153,7 @@ st.markdown("""
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
+        transform: translateY(6px) !important; /* ⚙️ 아이콘 아래로 하향 정렬 */
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"] p,
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] p {
