@@ -146,6 +146,12 @@ st.markdown("""
         padding: 0 !important;
         font-weight: 700 !important;
     }
+    
+    /* 어드민 로그인 폼 외곽선 깔끔 제거 */
+    [data-testid="stForm"] {
+        border: none !important;
+        padding: 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -254,13 +260,17 @@ def show_admin_console_modal():
     if not st.session_state["admin_logged_in"]:
         st.info("🔐 **어드민 인증이 필요합니다.** (기본 비밀번호: `admin123!`)")
         
-        col_l1, col_l2 = st.columns([3, 1])
-        with col_l1:
-            input_pass = st.text_input("🔑 관리자 비밀번호 입력", type="password", placeholder="비밀번호를 입력하세요")
-        with col_l2:
-            st.write("")
-            st.write("")
-            if st.button("🔓 로그인", type="primary", use_container_width=True):
+        # 💡 st.form으로 감싸서 엔터키(Enter) 제출 및 로그인 버튼 지원
+        with st.form("admin_login_form", clear_on_submit=False):
+            col_l1, col_l2 = st.columns([3, 1])
+            with col_l1:
+                input_pass = st.text_input("🔑 관리자 비밀번호 입력", type="password", placeholder="비밀번호를 입력하고 엔터를 누르세요")
+            with col_l2:
+                st.write("")
+                st.write("")
+                login_submit = st.form_submit_button("🔓 로그인", type="primary", use_container_width=True)
+
+            if login_submit:
                 if input_pass == ADMIN_PASSWORD:
                     st.session_state["admin_logged_in"] = True
                     st.success("✅ 어드민 인증 성공!")
