@@ -51,7 +51,7 @@ if "admin_logged_in" not in st.session_state:
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
-# --- CSS 테두리 및 회색 박스 100% 완전 박멸 스타일 정의 ---
+# --- CSS 가독성 및 톱니바퀴 버튼 테두리/박스 100% 완전 박멸 스타일 정의 ---
 st.markdown("""
 <style>
     .stApp, .main, [data-testid="stHeader"] {
@@ -98,32 +98,38 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 아이콘 테두리/외곽선/회색배경 100% 완전 박멸 💥 */
-    div[data-testid="stSidebar"] .icon-gear-btn button,
-    div[data-testid="stSidebar"] .icon-gear-btn button * {
-        border: 0px none transparent !important;
+    /* 💥 톱니바퀴 버튼 회색 박스/테두리/배경/그림자 100% 완전 박멸 💥 */
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button * {
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
         border-style: none !important;
         outline: none !important;
-        background: none !important;
-        background-color: transparent !important;
         box-shadow: none !important;
         -webkit-box-shadow: none !important;
         padding: 0px !important;
         margin: 0px !important;
-        font-size: 1.5rem !important;
-        line-height: 1 !important;
+        width: auto !important;
+        min-width: 0px !important;
+        height: auto !important;
+        min-height: 0px !important;
     }
-    div[data-testid="stSidebar"] .icon-gear-btn button:hover,
-    div[data-testid="stSidebar"] .icon-gear-btn button:focus,
-    div[data-testid="stSidebar"] .icon-gear-btn button:active {
-        border: 0px none transparent !important;
-        border-style: none !important;
-        outline: none !important;
-        background: none !important;
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button p {
+        font-size: 1.35rem !important;
+        line-height: 1.2 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:hover,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:focus,
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button:active {
+        background: transparent !important;
         background-color: transparent !important;
+        border: none !important;
         box-shadow: none !important;
-        -webkit-box-shadow: none !important;
         opacity: 0.7;
+    }
+    [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
+        align-items: center !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -390,13 +396,12 @@ def get_configured_engine_list():
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
-    col_ic, col_txt = st.columns([0.7, 5.3])
+    # 💡 ⚙️ 아이콘에만 100% 완벽한 노테두리 버튼을 연결하고 폰트 크기를 글자(1.35rem)와 동일하게 맞춤
+    col_ic, col_txt = st.columns([0.45, 5.55])
     with col_ic:
-        st.markdown('<div class="icon-gear-btn">', unsafe_allow_html=True)
         if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
             st.session_state["show_admin_modal"] = True
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
     with col_txt:
         st.markdown("<h3 style='margin:0; padding:0; line-height:1.2; font-size: 1.35rem;'>수집 & 필터 설정</h3>", unsafe_allow_html=True)
     
