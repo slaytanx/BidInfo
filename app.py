@@ -18,7 +18,7 @@ from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2, 
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
-# 💡 Streamlit Secrets에서 R2 스토리지 환경변수 로드
+# 💡 Streamlit Secrets에서 R2 스토리지 및 어드민 비밀번호 환경변수 로드
 if "R2_ACCESS_KEY_ID" in st.secrets:
     os.environ["R2_ACCESS_KEY_ID"] = st.secrets["R2_ACCESS_KEY_ID"]
 if "R2_SECRET_ACCESS_KEY" in st.secrets:
@@ -27,6 +27,8 @@ if "R2_ENDPOINT_URL" in st.secrets:
     os.environ["R2_ENDPOINT_URL"] = st.secrets["R2_ENDPOINT_URL"]
 if "R2_BUCKET_NAME" in st.secrets:
     os.environ["R2_BUCKET_NAME"] = st.secrets["R2_BUCKET_NAME"]
+
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", get_setting("admin_password", "admin123!"))
 
 # 💡 R2 스토리지에서 최신 bids_history.db 영구 데이터 다운로드 동기화
 download_db_from_r2(DB_PATH)
@@ -37,6 +39,8 @@ if "modal_target_bid" not in st.session_state:
     st.session_state["modal_target_bid"] = None
 if "qa_preset_text" not in st.session_state:
     st.session_state["qa_preset_text"] = ""
+if "admin_logged_in" not in st.session_state:
+    st.session_state["admin_logged_in"] = False
 
 # --- CSS 가독성 스타일 정의 ---
 st.markdown("""
@@ -88,7 +92,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🎯 입찰 공고 통합 수집 · 분석 · 제안 파이프라인 플랫폼")
-st.caption("공고 수집부터 D-Day 계산, RFP 1장 요약 리포트, 1차/2차/3차 멀티 AI 폴백 엔진 및 어드민 데이터 관리를 통합 제공합니다.")
+st.caption("공고 수집부터 D-Day 계산, RFP 1장 요약 리포트, 1차/2차/3차 멀티 AI 폴백 엔진 및 어드민 보안 관리를 통합 제공합니다.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -533,108 +537,142 @@ with tab3:
                     st.markdown("### 🤖 AI 답변:")
                     st.write(answer)
 
-# TAB 4: 🔒 어드민 (시스템 관리자)
+# TAB 4: 🔒 어드민 (시스템 관리자 - 비밀번호 보안 인증)
 with tab4:
     st.subheader("🔒 시스템 관리자 센터 (어드민)")
     st.caption("AI 1차/2차/3차 폴백 엔진 설정 및 불필요한 공고/첨부파일 완전 삭제를 관리합니다.")
 
-    # 1. AI 1차/2차/3차 폴백 엔진 설정
-    st.markdown("### 🤖 AI 멀티 엔진 (1차 · 2차 · 3차 폴백) 설정")
-    st.caption("1차 엔진 실패 시 2차 엔진으로, 2차 엔진 실패 시 3차 엔진으로 자동 전환되어 100% 무중단 요약을 수행합니다.")
-
-    provider_options = ["Google Gemini", "OpenRouter", "NVIDIA NIM", "Local Ollama", "사용 안함"]
-
-    col_e1, col_e2, col_e3 = st.columns(3)
-    with col_e1:
-        st.markdown("#### 🥇 1차 엔진 (기본)")
-        e1_provider = st.selectbox("1차 프로바이더", provider_options, index=provider_options.index(get_setting("e1_provider", "Google Gemini")))
-        e1_key = st.text_input("1차 API Key", value=get_setting("e1_key", os.environ.get("GEMINI_API_KEY", "")), type="password")
-        e1_model = st.text_input("1차 모델명", value=get_setting("e1_model", "gemini-1.5-flash"))
-
-    with col_e2:
-        st.markdown("#### 🥈 2차 엔진 (자동 폴백)")
-        e2_provider = st.selectbox("2차 프로바이더", provider_options, index=provider_options.index(get_setting("e2_provider", "OpenRouter")))
-        e2_key = st.text_input("2차 API Key", value=get_setting("e2_key", os.environ.get("OPENROUTER_API_KEY", "")), type="password")
-        e2_model = st.text_input("2차 모델명", value=get_setting("e2_model", "google/gemini-2.0-flash-exp:free"))
-
-    with col_e3:
-        st.markdown("#### 🥉 3차 엔진 (최종 폴백)")
-        e3_provider = st.selectbox("3차 프로바이더", provider_options, index=provider_options.index(get_setting("e3_provider", "Local Ollama")))
-        e3_key = st.text_input("3차 API Key", value=get_setting("e3_key", ""), type="password")
-        e3_model = st.text_input("3차 모델명", value=get_setting("e3_model", "gemma4:e4b-mlx"))
-
-    if st.button("💾 AI 멀티 엔진 설정 저장", type="primary", use_container_width=True):
-        save_setting("e1_provider", e1_provider)
-        save_setting("e1_key", e1_key)
-        save_setting("e1_model", e1_model)
-
-        save_setting("e2_provider", e2_provider)
-        save_setting("e2_key", e2_key)
-        save_setting("e2_model", e2_model)
-
-        save_setting("e3_provider", e3_provider)
-        save_setting("e3_key", e3_key)
-        save_setting("e3_model", e3_model)
-
-        upload_db_to_r2(DB_PATH)
-        st.success("🎉 1차, 2차, 3차 AI 멀티 엔진 설정이 DB 및 Cloudflare R2 스토리지에 저장되었습니다!")
-
-    st.markdown("---")
-
-    # 2. 불필요한 데이터 & 첨부파일 통합 삭제 센터
-    st.markdown("### 🗑️ 불필요 데이터 & 첨부파일 통합 삭제 센터")
-    st.caption("선택한 공고를 DB에서 제거하고, 컴퓨터 로컬 폴더 및 Cloudflare R2 스토리지 내부 파일까지 한 번에 깨끗이 지웁니다.")
-
-    all_bids_for_admin = load_all_bids()
-    if not all_bids_for_admin:
-        st.info("현재 저장된 공고 데이터가 없습니다.")
-    else:
-        bid_map = {f"[{b['num']}] [{b['org']}] {b['title']} ({b['reg_date']})": b for b in all_bids_for_admin}
-        selected_del_labels = st.multiselect("🗑️ 삭제할 공고 목록 선택 (다중 선택 가능)", options=list(bid_map.keys()))
-
-        col_del1, col_del2 = st.columns([2, 1])
-        with col_del1:
-            if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", use_container_width=True):
-                if not selected_del_labels:
-                    st.warning("삭제할 공고를 선택해 주세요.")
-                else:
-                    del_ids = []
-                    for label in selected_del_labels:
-                        bid_item = bid_map[label]
-                        del_ids.append(bid_item["bid_id"])
-                        
-                        # 1) 로컬 폴더 삭제
-                        folder_p = bid_item.get("folder_path", "")
-                        if folder_p and os.path.exists(folder_p):
-                            try:
-                                shutil.rmtree(folder_p)
-                                print(f"🗑️ 로컬 폴더 삭제: {folder_p}")
-                            except Exception as ex:
-                                print(f"⚠️ 로컬 폴더 삭제 실패: {ex}")
-
-                        # 2) Cloudflare R2 스토리지 폴더 삭제
-                        if folder_p:
-                            folder_bname = os.path.basename(folder_p)
-                            delete_r2_folder(f"data/{folder_bname}")
-
-                    # 3) DB 레코드 삭제
-                    delete_bids(del_ids)
-                    upload_db_to_r2(DB_PATH)
-
-                    st.success(f"🎉 선택한 {len(del_ids)}건의 공고 및 로컬/R2 첨부파일이 깨끗하게 삭제되었습니다!")
+    # 💡 어드민 비밀번호 보안 로그인 처리
+    if not st.session_state["admin_logged_in"]:
+        st.info("🔐 **어드민 인증이 필요합니다.** (기본 비밀번호: `admin123!`)")
+        
+        col_l1, col_l2 = st.columns([3, 1])
+        with col_l1:
+            input_pass = st.text_input("🔑 관리자 비밀번호 입력", type="password", placeholder="비밀번호를 입력하세요")
+        with col_l2:
+            st.write("")
+            st.write("")
+            if st.button("🔓 로그인", type="primary", use_container_width=True):
+                if input_pass == ADMIN_PASSWORD:
+                    st.session_state["admin_logged_in"] = True
+                    st.success("✅ 어드민 인증 성공!")
                     st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("💣 [주의] 전체 공고 및 파일 클린 포맷"):
-            st.warning("⚠️ 저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
-            if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행"):
-                reset_all_bids()
-                if os.path.exists(DATA_DIR):
-                    for item in os.listdir(DATA_DIR):
-                        item_p = os.path.join(DATA_DIR, item)
-                        if item != "bids_history.db" and os.path.isdir(item_p):
-                            shutil.rmtree(item_p)
-                delete_r2_folder("data")
-                upload_db_to_r2(DB_PATH)
-                st.success("💥 전체 공고 및 첨부파일이 초기화 포맷 되었습니다!")
+                else:
+                    st.error("❌ 비밀번호가 올바르지 않습니다.")
+    else:
+        # 로그인 성공 상태
+        col_hdr1, col_hdr2 = st.columns([4, 1])
+        with col_hdr1:
+            st.success("🔓 **어드민 관리자로 로그인되었습니다.**")
+        with col_hdr2:
+            if st.button("🔒 로그아웃", use_container_width=True):
+                st.session_state["admin_logged_in"] = False
                 st.rerun()
+
+        st.markdown("---")
+
+        # 1. AI 1차/2차/3차 폴백 엔진 설정
+        st.markdown("### 🤖 AI 멀티 엔진 (1차 · 2차 · 3차 폴백) 설정")
+        st.caption("1차 엔진 실패 시 2차 엔진으로, 2차 엔진 실패 시 3차 엔진으로 자동 전환되어 100% 무중단 요약을 수행합니다.")
+
+        provider_options = ["Google Gemini", "OpenRouter", "NVIDIA NIM", "Local Ollama", "사용 안함"]
+
+        col_e1, col_e2, col_e3 = st.columns(3)
+        with col_e1:
+            st.markdown("#### 🥇 1차 엔진 (기본)")
+            e1_provider = st.selectbox("1차 프로바이더", provider_options, index=provider_options.index(get_setting("e1_provider", "Google Gemini")))
+            e1_key = st.text_input("1차 API Key", value=get_setting("e1_key", os.environ.get("GEMINI_API_KEY", "")), type="password")
+            e1_model = st.text_input("1차 모델명", value=get_setting("e1_model", "gemini-1.5-flash"))
+
+        with col_e2:
+            st.markdown("#### 🥈 2차 엔진 (자동 폴백)")
+            e2_provider = st.selectbox("2차 프로바이더", provider_options, index=provider_options.index(get_setting("e2_provider", "OpenRouter")))
+            e2_key = st.text_input("2차 API Key", value=get_setting("e2_key", os.environ.get("OPENROUTER_API_KEY", "")), type="password")
+            e2_model = st.text_input("2차 모델명", value=get_setting("e2_model", "google/gemini-2.0-flash-exp:free"))
+
+        with col_e3:
+            st.markdown("#### 🥉 3차 엔진 (최종 폴백)")
+            e3_provider = st.selectbox("3차 프로바이더", provider_options, index=provider_options.index(get_setting("e3_provider", "Local Ollama")))
+            e3_key = st.text_input("3차 API Key", value=get_setting("e3_key", ""), type="password")
+            e3_model = st.text_input("3차 모델명", value=get_setting("e3_model", "gemma4:e4b-mlx"))
+
+        col_cfg1, col_cfg2 = st.columns([3, 1])
+        with col_cfg1:
+            new_admin_pass = st.text_input("🔑 어드민 비밀번호 변경 (선택)", value=get_setting("admin_password", "admin123!"), type="password")
+        with col_cfg2:
+            st.write("")
+            st.write("")
+            if st.button("💾 어드민 설정 저장", type="primary", use_container_width=True):
+                save_setting("e1_provider", e1_provider)
+                save_setting("e1_key", e1_key)
+                save_setting("e1_model", e1_model)
+
+                save_setting("e2_provider", e2_provider)
+                save_setting("e2_key", e2_key)
+                save_setting("e2_model", e2_model)
+
+                save_setting("e3_provider", e3_provider)
+                save_setting("e3_key", e3_key)
+                save_setting("e3_model", e3_model)
+
+                if new_admin_pass.strip():
+                    save_setting("admin_password", new_admin_pass.strip())
+
+                upload_db_to_r2(DB_PATH)
+                st.success("🎉 AI 멀티 엔진 및 비밀번호 설정이 DB/R2 스토리지에 저장되었습니다!")
+
+        st.markdown("---")
+
+        # 2. 불필요한 데이터 & 첨부파일 통합 삭제 센터
+        st.markdown("### 🗑️ 불필요 데이터 & 첨부파일 통합 삭제 센터")
+        st.caption("선택한 공고를 DB에서 제거하고, 컴퓨터 로컬 폴더 및 Cloudflare R2 스토리지 내부 파일까지 한 번에 깨끗이 지웁니다.")
+
+        all_bids_for_admin = load_all_bids()
+        if not all_bids_for_admin:
+            st.info("현재 저장된 공고 데이터가 없습니다.")
+        else:
+            bid_map = {f"[{b['num']}] [{b['org']}] {b['title']} ({b['reg_date']})": b for b in all_bids_for_admin}
+            selected_del_labels = st.multiselect("🗑️ 삭제할 공고 목록 선택 (다중 선택 가능)", options=list(bid_map.keys()))
+
+            col_del1, col_del2 = st.columns([2, 1])
+            with col_del1:
+                if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", use_container_width=True):
+                    if not selected_del_labels:
+                        st.warning("삭제할 공고를 선택해 주세요.")
+                    else:
+                        del_ids = []
+                        for label in selected_del_labels:
+                            bid_item = bid_map[label]
+                            del_ids.append(bid_item["bid_id"])
+                            
+                            folder_p = bid_item.get("folder_path", "")
+                            if folder_p and os.path.exists(folder_p):
+                                try:
+                                    shutil.rmtree(folder_p)
+                                except Exception as ex:
+                                    print(f"⚠️ 로컬 폴더 삭제 실패: {ex}")
+
+                            if folder_p:
+                                folder_bname = os.path.basename(folder_p)
+                                delete_r2_folder(f"data/{folder_bname}")
+
+                        delete_bids(del_ids)
+                        upload_db_to_r2(DB_PATH)
+
+                        st.success(f"🎉 선택한 {len(del_ids)}건의 공고 및 로컬/R2 첨부파일이 완전히 삭제되었습니다!")
+                        st.rerun()
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander("💣 [주의] 전체 공고 및 파일 클린 포맷"):
+                st.warning("⚠️ 저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
+                if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행"):
+                    reset_all_bids()
+                    if os.path.exists(DATA_DIR):
+                        for item in os.listdir(DATA_DIR):
+                            item_p = os.path.join(DATA_DIR, item)
+                            if item != "bids_history.db" and os.path.isdir(item_p):
+                                shutil.rmtree(item_p)
+                    delete_r2_folder("data")
+                    upload_db_to_r2(DB_PATH)
+                    st.success("💥 전체 공고 및 첨부파일이 초기화 포맷 되었습니다!")
+                    st.rerun()
