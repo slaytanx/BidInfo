@@ -98,7 +98,7 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 아이콘 위치를 미세 조절하여 글씨와 100% 한 줄 수평 정렬 💥 */
+    /* 💥 톱니바퀴 아이콘 위치를 조금 더 내려서 완벽 수평 피팅 💥 */
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] {
         display: flex !important;
         align-items: center !important;
@@ -109,7 +109,7 @@ st.markdown("""
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        padding-top: 4px !important; /* 높이가 높았던 톱니바퀴를 아래로 미세 보정 */
+        padding-top: 6px !important;
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button {
         background: transparent !important;
@@ -124,7 +124,7 @@ st.markdown("""
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
-        transform: translateY(2px) !important; /* 톱니바퀴 Y축 미세 하향 정렬 */
+        transform: translateY(5px) !important; /* 톱니바퀴를 조금 더 하향 정렬 */
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button p {
         font-size: 1.25rem !important;
