@@ -245,70 +245,132 @@ def crawl_and_download_bids_by_date(url: str, base_dir: str, start_date: date, e
         try:
             r = session.get(kb_url, verify=False, timeout=15)
             html = r.text
+
+            tr_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL | re.IGNORECASE)
+            item_index = 0
             
-            a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*boardId=648[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
-            if not a_matches:
-                a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*bbsMode=view[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
-            
-            for idx, (raw_href, raw_title) in enumerate(a_matches, 1):
-                title = re.sub(r'<[^>]+>', '', raw_title).strip()
-                href = raw_href.replace("&amp;", "&")
-                if not title or len(title) < 5 or "페이지" in title:
-                    continue
+            if tr_matches:
+                for tr in tr_matches:
+                    tds = re.findall(r'<td[^>]*>(.*?)</td>', tr, re.DOTALL | re.IGNORECASE)
+                    if len(tds) >= 2:
+                        raw_num_text = re.sub(r'<[^>]+>', '', tds[0]).strip()
+                        title_td = tds[1]
 
-                if keyword and keyword.lower() not in title.lower():
-                    continue
+                        a_match = re.search(r'<a[^>]*href=["\']([^"\']*)["\'][^>]*>(.*?)</a>', title_td, re.IGNORECASE | re.DOTALL)
+                        if not a_match:
+                            continue
 
-                art_match = re.search(r"articleId=(\d+)", href)
-                bid_id = art_match.group(1) if art_match else f"KB_{idx}"
-                
-                if art_match:
-                    origin_link = f"https://omoney.kbstar.com/quics?page=C018592&cc=b031439:b031439&boardId=648&compId=b031439&articleId={bid_id}&bbsMode=view"
-                else:
-                    origin_link = urljoin("https://omoney.kbstar.com/", href) if href else kb_url
+                        raw_href, raw_title = a_match.groups()
+                        title = re.sub(r'<[^>]+>', '', raw_title).strip()
+                        href = raw_href.replace("&amp;", "&")
 
-                reg_date_obj = date.today()
-                formatted_date_str = reg_date_obj.strftime("%Y-%m-%d")
-                folder_title = sanitize_filename(title)[:35]
-                folder_name = f"[KB국민은행]_{formatted_date_str}_{folder_title}"
-                item_folder_path = os.path.join(base_dir, folder_name)
-                os.makedirs(item_folder_path, exist_ok=True)
+                        if not title or len(title) < 5 or "페이지" in title:
+                            continue
 
-                if href:
-                    detail_url = urljoin("https://omoney.kbstar.com/", href)
-                    try:
-                        det_res = session.get(detail_url, verify=False, timeout=12)
-                        forms = re.findall(r'<form[^>]*name=["\']?frmDownload\d?["\']?[^>]*>.*?</form>', det_res.text, re.DOTALL | re.IGNORECASE)
+                        if keyword and keyword.lower() not in title.lower():
+                            continue
+
+                        item_index += 1
+                        art_match = re.search(r"articleId=(\d+)", href)
+                        bid_id = art_match.group(1) if art_match else f"KB_{item_index}"
                         
-                        for form_html in forms:
-                            act_match = re.search(r'action=["\']?([^"\';\s>]+)["\']?', form_html)
-                            action_url = act_match.group(1) if act_match else "/quics?asfilecode=534213"
-                            full_down_url = urljoin("https://omoney.kbstar.com/", action_url)
-                            
-                            inputs = re.findall(r'<input[^>]*name=["\']?([^"\';\s>]+)["\']?[^>]*value=["\']?([^"\';>]+)["\']?', form_html, re.IGNORECASE)
-                            payload = {name: val for name, val in inputs}
-                            
-                            target_file_name = payload.get("_FILE_NAME", f"KB_attachment_{bid_id}.file")
-                            if payload.get("_FILE_NAME"):
-                                try:
-                                    f_res = session.post(full_down_url, data=payload, stream=True, verify=False)
-                                    if f_res.status_code == 200 and len(f_res.content) > 100:
-                                        handle_download_and_extract_zip(f_res, item_folder_path, target_file_name)
-                                except Exception as ex_down:
-                                    print(f"    └ ⚠️ KB 파일 다운로드 실패 ({target_file_name}): {ex_down}")
-                    except Exception as e:
-                        print(f"    └ ⚠️ KB 상세페이지 다운로드 폼 수집 예외: {e}")
+                        # 원본 게시글 번호 파싱 (tds[0]에 숫자가 있으면 그대로 사용, 아니면 articleId 사용)
+                        bid_no = raw_num_text if (raw_num_text and raw_num_text.isdigit()) else (bid_id if bid_id.isdigit() else str(item_index))
 
-                collected_bids.append({
-                    "번호": str(idx),
-                    "수집사이트": site_name if site_name != "미지정" else "KB국민은행",
-                    "게시물ID": bid_id,
-                    "계열사/조직": "KB국민은행",
-                    "제목": title,
-                    "등록일": formatted_date_str,
-                    "폴더경로": item_folder_path,
-                    "원본URL": origin_link
-                })
+                        # 날짜 파싱
+                        reg_date_obj = date.today()
+                        for td in tds[2:]:
+                            td_text = re.sub(r'<[^>]+>', '', td).strip()
+                            parsed_d = extract_date_from_text(td_text)
+                            if parsed_d:
+                                reg_date_obj = parsed_d
+                                break
+
+                        formatted_date_str = reg_date_obj.strftime("%Y-%m-%d")
+
+                        if art_match:
+                            origin_link = f"https://omoney.kbstar.com/quics?page=C018592&cc=b031439:b031439&boardId=648&compId=b031439&articleId={bid_id}&bbsMode=view"
+                        else:
+                            origin_link = urljoin("https://omoney.kbstar.com/", href) if href else kb_url
+
+                        folder_title = sanitize_filename(title)[:35]
+                        folder_name = f"[KB국민은행]_{formatted_date_str}_{folder_title}"
+                        item_folder_path = os.path.join(base_dir, folder_name)
+                        os.makedirs(item_folder_path, exist_ok=True)
+
+                        if href:
+                            detail_url = urljoin("https://omoney.kbstar.com/", href)
+                            try:
+                                det_res = session.get(detail_url, verify=False, timeout=12)
+                                forms = re.findall(r'<form[^>]*name=["\']?frmDownload\d?["\']?[^>]*>.*?</form>', det_res.text, re.DOTALL | re.IGNORECASE)
+                                
+                                for form_html in forms:
+                                    act_match = re.search(r'action=["\']?([^"\';\s>]+)["\']?', form_html)
+                                    action_url = act_match.group(1) if act_match else "/quics?asfilecode=534213"
+                                    full_down_url = urljoin("https://omoney.kbstar.com/", action_url)
+                                    
+                                    inputs = re.findall(r'<input[^>]*name=["\']?([^"\';\s>]+)["\']?[^>]*value=["\']?([^"\';>]+)["\']?', form_html, re.IGNORECASE)
+                                    payload = {name: val for name, val in inputs}
+                                    
+                                    target_file_name = payload.get("_FILE_NAME", f"KB_attachment_{bid_id}.file")
+                                    if payload.get("_FILE_NAME"):
+                                        try:
+                                            f_res = session.post(full_down_url, data=payload, stream=True, verify=False)
+                                            if f_res.status_code == 200 and len(f_res.content) > 100:
+                                                handle_download_and_extract_zip(f_res, item_folder_path, target_file_name)
+                                        except Exception as ex_down:
+                                            print(f"    └ ⚠️ KB 파일 다운로드 실패 ({target_file_name}): {ex_down}")
+                            except Exception as e:
+                                print(f"    └ ⚠️ KB 상세페이지 다운로드 폼 수집 예외: {e}")
+
+                        collected_bids.append({
+                            "번호": bid_no,
+                            "수집사이트": site_name if site_name != "미지정" else "KB국민은행",
+                            "게시물ID": bid_id,
+                            "계열사/조직": "KB국민은행",
+                            "제목": title,
+                            "등록일": formatted_date_str,
+                            "폴더경로": item_folder_path,
+                            "원본URL": origin_link
+                        })
+
+            if not collected_bids:
+                a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*boardId=648[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
+                if not a_matches:
+                    a_matches = re.findall(r'<a[^>]*href=["\']([^"\']*bbsMode=view[^"\']*)["\'][^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
+
+                for idx, (raw_href, raw_title) in enumerate(a_matches, 1):
+                    title = re.sub(r'<[^>]+>', '', raw_title).strip()
+                    href = raw_href.replace("&amp;", "&")
+                    if not title or len(title) < 5 or "페이지" in title:
+                        continue
+
+                    if keyword and keyword.lower() not in title.lower():
+                        continue
+
+                    art_match = re.search(r"articleId=(\d+)", href)
+                    bid_id = art_match.group(1) if art_match else f"KB_{idx}"
+                    bid_no = bid_id if bid_id.isdigit() else str(idx)
+
+                    origin_link = f"https://omoney.kbstar.com/quics?page=C018592&cc=b031439:b031439&boardId=648&compId=b031439&articleId={bid_id}&bbsMode=view" if art_match else urljoin("https://omoney.kbstar.com/", href)
+
+                    reg_date_obj = date.today()
+                    formatted_date_str = reg_date_obj.strftime("%Y-%m-%d")
+                    folder_title = sanitize_filename(title)[:35]
+                    folder_name = f"[KB국민은행]_{formatted_date_str}_{folder_title}"
+                    item_folder_path = os.path.join(base_dir, folder_name)
+                    os.makedirs(item_folder_path, exist_ok=True)
+
+                    collected_bids.append({
+                        "번호": bid_no,
+                        "수집사이트": site_name if site_name != "미지정" else "KB국민은행",
+                        "게시물ID": bid_id,
+                        "계열사/조직": "KB국민은행",
+                        "제목": title,
+                        "등록일": formatted_date_str,
+                        "폴더경로": item_folder_path,
+                        "원본URL": origin_link
+                    })
         except Exception as e:
             print(f"⚠️ KB국민은행 수집 중 예외 발생: {e}")
 
