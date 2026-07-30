@@ -2,10 +2,9 @@ import os
 import boto3
 from botocore.config import Config
 
-# R2 환경 변수 또는 secrets에서 설정 읽기
 R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL", "https://ab2ae35de3e5e4fdf200ba9417f9419f.r2.cloudflarestorage.com")
-R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
-R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "028720395291a20c03588eef19922068")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "685259853f59127530ef43ab68cc0db973bb0c374f0951f168ccf36c264b5af4")
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "bid-info")
 
 def get_s3_client():
