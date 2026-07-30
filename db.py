@@ -101,6 +101,9 @@ def save_bid(bid_data: dict):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(bid_id) DO UPDATE SET
             site_name = excluded.site_name,
+            num = excluded.num,
+            org = excluded.org,
+            title = excluded.title,
             summary = excluded.summary,
             fit_score = excluded.fit_score,
             fit_reason = excluded.fit_reason,
