@@ -4,3 +4,4 @@ requests>=2.30.0
 pypdf>=4.0.0
 olefile>=0.46
 urllib3>=2.0.0
+boto3>=1.34.0

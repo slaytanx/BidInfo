@@ -10,11 +10,24 @@ from hwp_parser import process_folder_documents
 from ollama_summary import analyze_bid_with_ollama, answer_bid_question, generate_rfp_one_pager
 from db import (
     init_db, save_bid, load_all_bids, save_site, load_all_sites, 
-    delete_site, save_setting, get_setting, update_bid_status
+    delete_site, save_setting, get_setting, update_bid_status, DB_PATH
 )
+from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
+# 💡 Streamlit Secrets에서 R2 스토리지 환경변수 로드
+if "R2_ACCESS_KEY_ID" in st.secrets:
+    os.environ["R2_ACCESS_KEY_ID"] = st.secrets["R2_ACCESS_KEY_ID"]
+if "R2_SECRET_ACCESS_KEY" in st.secrets:
+    os.environ["R2_SECRET_ACCESS_KEY"] = st.secrets["R2_SECRET_ACCESS_KEY"]
+if "R2_ENDPOINT_URL" in st.secrets:
+    os.environ["R2_ENDPOINT_URL"] = st.secrets["R2_ENDPOINT_URL"]
+if "R2_BUCKET_NAME" in st.secrets:
+    os.environ["R2_BUCKET_NAME"] = st.secrets["R2_BUCKET_NAME"]
+
+# 💡 R2 스토리지에서 최신 bids_history.db 영구 데이터 다운로드 동기화
+download_db_from_r2(DB_PATH)
 init_db()
 
 # --- 세션 상태 초기화 (팝업 열기/닫기 및 Q&A 질문 유지 제어용) ---
@@ -26,25 +39,18 @@ if "qa_preset_text" not in st.session_state:
 # --- 배경색 제거 및 상단 여백 2.5rem 조절, 1행 항목명(헤더) 및 셀 강제 완벽 중앙 정렬 CSS ---
 st.markdown("""
 <style>
-    /* 메인 앱 배경색 완전 제거 (투명/클린) */
     .stApp, .main, [data-testid="stHeader"] {
         background-color: transparent !important;
     }
-
-    /* 메인 페이지 상단 여백 2.5rem 적용 */
     .block-container {
         padding-top: 2.5rem !important;
         padding-bottom: 1rem !important;
     }
-    
-    /* 최상단 타이틀(h1) 여백 초기화 및 깔끔한 폰트 세팅 */
     h1 {
         margin-top: 0px !important;
         padding-top: 0px !important;
         background: transparent !important;
     }
-
-    /* 구분선(hr) 및 subheader(h3) 상단 여백 12px 설정 */
     hr {
         margin-top: 0.3rem !important;
         margin-bottom: 8px !important;
@@ -54,15 +60,11 @@ st.markdown("""
         padding-top: 0px !important;
         margin-bottom: 0.4rem !important;
     }
-
-    /* 버튼 글자 잘림 방지 (단어 단위 유지 & 자동 줄바꿈 억제) */
     .stButton button, .stButton button p {
         white-space: nowrap !important;
         word-break: keep-all !important;
         font-size: 14px !important;
     }
-
-    /* 1행 헤더 항목명(번호, 찜, 진행상태 등) 전체 중앙 정렬 */
     [data-testid="stDataFrame"] [role="columnheader"],
     [data-testid="stDataFrame"] [role="columnheader"] div,
     [data-testid="stDataFrame"] [role="columnheader"] span,
@@ -74,8 +76,6 @@ st.markdown("""
         display: flex !important;
         margin: 0 auto !important;
     }
-
-    /* 표 하단 가로 스크롤바 강제 활성화 */
     div[data-testid="stDataFrame"] {
         width: 100% !important;
     }
@@ -149,7 +149,6 @@ def show_bid_detail_modal(row):
     st.markdown(f"### {row['title']}")
     st.caption(f"수집 사이트: {row.get('site_name', '미지정')} | 계열사: {row['org']} | 등록일: {row['reg_date']} | {star_mark}")
     
-    # 💡 원본 게시글 링크 버튼
     origin_link_url = row.get("origin_url", "") or row.get("url", "")
     if origin_link_url:
         st.link_button("🌐 실제 원본 공고 게시글로 이동 (새 창)", origin_link_url, use_container_width=True)
@@ -220,6 +219,7 @@ with st.sidebar:
             if st.button("💾 사이트 저장", use_container_width=True):
                 if new_site_name.strip() and new_site_url.strip():
                     save_site(new_site_name, new_site_url)
+                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
                     st.success(f"[{new_site_name}] 사이트 저장 완료!")
                     st.rerun()
                 else:
@@ -228,6 +228,7 @@ with st.sidebar:
             if st.button("🗑️ 사이트 삭제", use_container_width=True):
                 if selected_site_name:
                     delete_site(selected_site_name)
+                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
                     st.success(f"[{selected_site_name}] 삭제 완료!")
                     st.rerun()
 
@@ -310,7 +311,10 @@ if run_crawl:
                 save_bid(item)
                 progress_bar.progress(idx / len(bids))
 
-            st.success(f"🎉 총 {len(bids)}건의 공고 분석 및 DB 보관 완료!")
+            # 💡 수집 완료 후 R2 스토리지에 DB 파일 업로드 동기화
+            upload_db_to_r2(DB_PATH)
+
+            st.success(f"🎉 총 {len(bids)}건의 공고 분석 및 R2 스토리지 보관 완료!")
             st.rerun()
 
 
@@ -426,6 +430,7 @@ else:
                 st.write("")
                 if st.button("💾 상태 저장", type="primary", use_container_width=True):
                     update_bid_status(selected_row["bid_id"], new_status, 1 if is_star else 0)
+                    upload_db_to_r2(DB_PATH) # R2 스토리지 동기화
                     st.success(f"[{selected_row['title'][:15]}...] 상태가 업데이트되었습니다!")
                     st.rerun()
 
