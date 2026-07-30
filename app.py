@@ -98,55 +98,10 @@ st.markdown("""
         overflow-x: auto !important;
     }
     
-    /* 💥 톱니바퀴 아이콘 위치를 조금 더 내려서 완벽 수평 피팅 (사이드바 첫 번째 컬럼 블록으로 격리) 💥 */
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type {
-        display: flex !important;
-        align-items: center !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding-top: 6px !important;
-    }
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button {
-        background: transparent !important;
-        background-color: transparent !important;
-        border: none !important;
-        border-style: none !important;
-        outline: none !important;
-        box-shadow: none !important;
-        padding: 0px !important;
-        margin: 0px !important;
-        width: auto !important;
-        min-width: 0px !important;
-        height: auto !important;
-        min-height: 0px !important;
-        transform: translateY(5px) !important; /* 톱니바퀴를 조금 더 하향 정렬 */
-    }
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button p {
-        font-size: 1.25rem !important;
-        line-height: 1 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:first-child button:hover {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        opacity: 0.7;
-    }
-    [data-testid="stSidebar"] div[data-testid="stHorizontalBlock"]:first-of-type [data-testid="stColumn"]:last-child h3 {
-        font-size: 1.3rem !important;
-        line-height: 1.2 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        font-weight: 700 !important;
-    }
-    
     /* 💖 LG U+ 마젠타 브랜드 Primary 버튼 & 수집 시작 버튼 강조 스타일 💖 */
+    [data-testid="stSidebar"] button[kind="primary"],
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
+    [data-testid="stSidebar"] div[data-testid="stBaseButton-primary"] button,
     button[kind="primary"],
     button[data-testid="stBaseButton-primary"],
     div[data-testid="stBaseButton-primary"] button,
@@ -160,6 +115,9 @@ st.markdown("""
         box-shadow: 0 4px 14px rgba(230, 0, 126, 0.4) !important;
         transition: all 0.2s ease-in-out !important;
     }
+    [data-testid="stSidebar"] button[kind="primary"] p,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p,
+    [data-testid="stSidebar"] div[data-testid="stBaseButton-primary"] button p,
     button[kind="primary"] p,
     button[data-testid="stBaseButton-primary"] p,
     div[data-testid="stBaseButton-primary"] button p,
@@ -168,6 +126,9 @@ st.markdown("""
         font-weight: 700 !important;
         font-size: 15px !important;
     }
+    [data-testid="stSidebar"] button[kind="primary"]:hover,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover,
+    [data-testid="stSidebar"] div[data-testid="stBaseButton-primary"] button:hover,
     button[kind="primary"]:hover,
     button[data-testid="stBaseButton-primary"]:hover,
     div[data-testid="stBaseButton-primary"] button:hover {
