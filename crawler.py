@@ -5,6 +5,7 @@ import urllib3
 import zipfile
 from urllib.parse import urljoin, unquote
 from datetime import datetime, date
+from r2_storage import upload_file_to_r2
 
 # SSL 경고 메시지 비활성화
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -57,7 +58,7 @@ def extract_date_from_text(text: str) -> date | None:
 def handle_download_and_extract_zip(response, item_folder_path: str, default_name: str) -> str:
     """
     다운로드 응답 헤더에서 URL 디코딩된 파일명을 추출하여 저장하고,
-    ZIP 파일일 경우 즉시 자동으로 압축 해제합니다.
+    ZIP 파일일 경우 즉시 자동으로 압축 해제하며 R2 스토리지에 동기화 업로드합니다.
     """
     content_disp = response.headers.get("Content-Disposition", "")
     file_name = default_name
@@ -83,6 +84,11 @@ def handle_download_and_extract_zip(response, item_folder_path: str, default_nam
     
     print(f"    └ 💾 파일 저장 완료: {file_name}")
 
+    # R2 스토리지 키 생성 및 파일 업로드 동기화
+    folder_name = os.path.basename(item_folder_path)
+    r2_key = f"data/{folder_name}/{file_name}"
+    upload_file_to_r2(save_path, r2_key)
+
     if file_name.lower().endswith(".zip"):
         try:
             with zipfile.ZipFile(save_path, 'r') as zip_ref:
@@ -100,7 +106,9 @@ def handle_download_and_extract_zip(response, item_folder_path: str, default_nam
                         else:
                             with zip_ref.open(member) as source, open(target_path, "wb") as target:
                                 target.write(source.read())
-            print(f"    └ 📦 ZIP 압축 해제 완료: {file_name}")
+                            # 압축 해제된 개별 서류 파일도 R2 스토리지 업로드
+                            upload_file_to_r2(target_path, f"data/{folder_name}/{filename}")
+            print(f"    └ 📦 ZIP 압축 해제 및 R2 동기화 완료: {file_name}")
         except Exception:
             try:
                 with zipfile.ZipFile(save_path, 'r') as zip_ref:
