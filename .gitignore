@@ -5,3 +5,8 @@ __pycache__/
 data/*.db
 data/*
 scratch/
+.env
+
+
+.local_secrets.json
+graphify-out/
