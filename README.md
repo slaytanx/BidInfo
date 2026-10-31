@@ -40,7 +40,7 @@
 
 관리자 화면의 **분류 사전 관리**에서 키워드·동의어 수정, 항목 추가·비활성화와 JSON 내보내기를 제공합니다. [기본 분류표와 조사 근거](.doc/design/features/설계서_분야솔루션업무분류.md)를 참고하세요.
 
-HWP 본문 레코드, HWPX·DOCX XML, PDF 텍스트와 OCR, TXT, XLSX를 읽습니다. 확장자가 잘못된 파일은 실제 형식을 확인합니다. 파일 해시 기반 캐시를 재사용하며 실패·부분 성공 파일은 재시도합니다. PDF OCR은 텍스트가 부족한 페이지에만 적용합니다.
+HWP 본문 레코드, HWPX(표 Markdown), PDF Markdown과 OCR, DOCX·PPTX·HTML(pandoc), XLSX·XLS(CSV), TXT를 읽습니다. Streamlit Cloud는 `packages.txt`로 pandoc·Tesseract를 설치합니다. 확장자가 잘못된 파일은 실제 형식을 확인합니다. 파일 해시 기반 캐시를 재사용하며 실패·부분 성공 파일은 재시도합니다. PDF OCR은 텍스트가 부족한 페이지에만 적용합니다.
 
 ```bash
 uv pip install --python .venv/bin/python -r requirements.txt

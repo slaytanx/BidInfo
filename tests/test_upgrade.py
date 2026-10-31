@@ -55,6 +55,45 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(result['status'],'성공')
         self.assertLess(result['text'].index('앞부분'),result['text'].index('후반'))
 
+    def test_hwpx_table_markdown_keeps_order(self):
+        p=self.root/'table.hwpx'
+        row=lambda a,b:f'<tr><tc><subList><p><run><t>{a}</t></run></p></subList></tc><tc><subList><p><run><t>{b}</t></run></p></subList></tc></tr>'
+        with zipfile.ZipFile(p,'w') as z:
+            z.writestr('Contents/section0.xml',f'<sec><p><run><t>앞 문단</t></run></p><p><run><tbl>{row("항목","기준")}{row("자격","등록|필수")}</tbl></run></p><p><run><t>뒤 문단</t></run></p></sec>')
+        text=parser.extract_document(p)['text']
+        self.assertIn('| 항목 | 기준 |\n| --- | --- |\n| 자격 | 등록\\|필수 |',text)
+        self.assertLess(text.index('앞 문단'),text.index('| 항목'));self.assertLess(text.index('| 자격'),text.index('뒤 문단'))
+        self.assertEqual(text.count('자격'),1)
+
+    def test_excel_sheets_as_csv(self):
+        import pandas as pd
+        p=self.root/'내역.xlsx'
+        with pd.ExcelWriter(p) as w:
+            pd.DataFrame([['품목','수량'],['서버',2],[None,None]]).to_excel(w,sheet_name='내역',index=False,header=False)
+            pd.DataFrame().to_excel(w,sheet_name='빈시트')
+        result=parser.extract_document(p)
+        self.assertEqual(result['method'],'Excel CSV');self.assertIn('[시트: 내역]\n```csv\n품목,수량\n서버,2\n```',result['text'])
+        self.assertNotIn('빈시트',result['text'])
+
+    def test_ole_format_split(self):
+        p=self.root/'legacy.file';p.write_bytes(b'\xd0\xcf\x11\xe0'+bytes(8))
+        for streams,kind in ((['FileHeader'],'hwp'),(['Workbook'],'xls'),(['WordDocument'],'doc')):
+            ole=Mock();ole.__enter__=Mock(return_value=ole);ole.__exit__=Mock(return_value=False);ole.exists=lambda n,s=streams:n in s
+            with patch.object(parser.olefile,'OleFileIO',return_value=ole):
+                self.assertEqual(parser.detect_format(p),kind)
+        with patch.object(parser.olefile,'OleFileIO',return_value=ole):
+            self.assertIn('DOCX로 변환',parser.extract_document(p)['errors'][0])
+
+    @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
+    def test_docx_table_via_pandoc(self):
+        import subprocess
+        p=self.root/'rfp.docx'
+        subprocess.run(['pandoc','-f','gfm','-o',str(p)],input='# 공고\n\n| 항목 | 기준 |\n|---|---|\n| 자격 | 등록 |\n',text=True,check=True)
+        result=parser.extract_document(p)
+        self.assertEqual(result['method'],'pandoc');self.assertRegex(result['text'],r'\| 자격 +\| 등록 +\|')
+        with patch.object(parser.shutil,'which',return_value=None):
+            self.assertIn('pandoc 미설치',parser.extract_document(p,use_cache=False)['errors'])
+
     def test_cache_and_changed_content(self):
         p=self.root/'sample.txt';p.write_text('서버 구축 입찰 안내')
         first=parser.extract_document(p);second=parser.extract_document(p)

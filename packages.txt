@@ -1,0 +1,3 @@
+pandoc
+tesseract-ocr
+tesseract-ocr-kor

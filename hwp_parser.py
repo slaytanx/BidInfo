@@ -12,9 +12,9 @@ import zipfile
 import zlib
 import xml.etree.ElementTree as ET
 import olefile
-from pypdf import PdfReader
+import pandas as pd
 
-PARSER_VERSION = '4'
+PARSER_VERSION = '5'
 CACHE_DIR = Path(__file__).parent / 'data/cache/documents'
 MAX_FILE_BYTES = 150 * 1024 * 1024
 MAX_ZIP_BYTES = 500 * 1024 * 1024
@@ -78,68 +78,93 @@ def _hwp_segments(path):
     return segments, errors, 'HWP 레코드'
 
 
-def _xml_segments(path, kind):
+def _tag(node):
+    return node.tag.split('}')[-1]
+
+
+def _md_table(tbl):
+    # shortcut: 병합 셀(colSpan)은 펼치지 않아 열이 밀릴 수 있음, 실제 공고에서 문제되면 cellSpan 반영
+    rows = [[' '.join(''.join(''.join(t.itertext()) for t in tc.iter() if _tag(t) == 't').split()).replace('|', '\\|')
+             for tc in tr if _tag(tc) == 'tc'] for tr in tbl if _tag(tr) == 'tr']
+    rows = [r for r in rows if r]
+    if not rows:
+        return ''
+    width = max(map(len, rows))
+    lines = ['| ' + ' | '.join(r + [''] * (width - len(r))) + ' |' for r in rows]
+    lines.insert(1, '|' + ' --- |' * width)
+    return '\n'.join(lines)
+
+
+def _hwpx_blocks(node, blocks, buffer):
+    """문단과 표를 원문 순서대로 모은다. 표 안 문단은 셀 텍스트로만 쓴다."""
+    def flush():
+        blocks.append(''.join(buffer).strip())
+        buffer.clear()
+
+    for child in node:
+        tag = _tag(child)
+        if tag == 'tbl':
+            flush()
+            blocks.append(_md_table(child))
+        elif tag == 't':
+            buffer.append(''.join(child.itertext()))
+        else:
+            _hwpx_blocks(child, blocks, buffer)
+            if tag == 'p':
+                flush()
+
+
+def _hwpx_segments(path):
     segments = []
     with zipfile.ZipFile(path) as archive:
-        if sum(i.file_size for i in archive.infolist()) > MAX_ZIP_BYTES:
-            raise ValueError('문서 XML 크기 제한 초과')
-        names = ['word/document.xml'] if kind == 'docx' else sorted((n for n in archive.namelist() if re.fullmatch(r'Contents/section\d+\.xml', n)), key=lambda n: int(re.search(r'\d+', n).group()))
+        names = sorted((n for n in archive.namelist() if re.fullmatch(r'Contents/section\d+\.xml', n)), key=lambda n: int(re.search(r'\d+', n).group()))
         for name in names:
-            root = ET.fromstring(archive.read(name))
-            paragraphs = []
-            for node in root.iter():
-                if node.tag.split('}')[-1] == 'p':
-                    text = ''.join(n.text or '' for n in node.iter() if n.tag.split('}')[-1] == 't')
-                    if text.strip():
-                        paragraphs.append(text)
-            segments.append({'location': name, 'text': '\n'.join(paragraphs)})
-    return segments, [], kind.upper() + ' XML'
+            blocks = []
+            _hwpx_blocks(ET.fromstring(archive.read(name)), blocks, [])
+            segments.append({'location': name, 'text': '\n\n'.join(b for b in blocks if b)})
+    return segments, [], 'HWPX 마크다운'
+
+
+def _pandoc_segments(path, kind):
+    if not shutil.which('pandoc'):
+        raise RuntimeError('pandoc 미설치')
+    proc = subprocess.run(['pandoc', '-f', kind, '-t', 'gfm', '--wrap=none', str(path)], capture_output=True, text=True, timeout=120, check=False)
+    if proc.returncode:
+        raise ValueError(f'pandoc 변환 실패: {proc.stderr.strip()[:200]}')
+    return [{'location': '본문', 'text': proc.stdout}], [], 'pandoc'
+
+
+def _excel_segments(path, kind):
+    # 머리글 행이 제목·병합 셀인 내역서가 많아 header=None으로 원본 행을 그대로 둔다.
+    sheets = pd.read_excel(path, sheet_name=None, header=None, engine='openpyxl' if kind == 'xlsx' else 'xlrd')
+    segments = []
+    for name, frame in sheets.items():
+        frame = frame.dropna(how='all').dropna(axis=1, how='all')
+        if not frame.empty:
+            segments.append({'location': f'시트: {name}', 'text': '```csv\n' + frame.to_csv(index=False, header=False) + '```'})
+    return segments, [], 'Excel CSV'
 
 
 def _quality(text):
     return len(re.findall(r'[가-힣A-Za-z0-9]', text)) >= 30
 
 
-def _ocr_page(path, index):
-    import pymupdf as fitz
-    if not shutil.which('tesseract'):
-        raise RuntimeError('Tesseract 미설치')
-    with tempfile.TemporaryDirectory(prefix='bid-ocr-') as directory:
-        image = Path(directory) / 'page.png'
-        with fitz.open(str(path)) as doc:
-            page = doc[index]
-            scale = min(3, 4000 / max(page.rect.width, page.rect.height))
-            page.get_pixmap(matrix=fitz.Matrix(scale, scale)).save(image)
-        proc = subprocess.run(['tesseract', str(image), 'stdout', '-l', 'kor+eng'], capture_output=True, text=True, timeout=90)
-        if proc.returncode:
-            raise RuntimeError('OCR 실패: 한국어 데이터와 원본을 확인해 주세요')
-        return proc.stdout
-
-
 def _pdf_segments(path, ocr=True):
-    reader = PdfReader(str(path))
-    if reader.is_encrypted and not reader.decrypt(''):
-        raise ValueError('암호화된 PDF')
-    segments, errors, used_ocr = [], [], False
-    for index, page in enumerate(reader.pages):
-        text, method = '', 'PDF 텍스트'
-        try:
-            text = page.extract_text(extraction_mode='layout') or ''
-        except Exception:
-            pass
-        if not _quality(text):
-            if ocr:
-                try:
-                    recognized = _ocr_page(path, index)
-                    used_ocr = True
-                    if len(recognized.strip()) > len(text.strip()):
-                        text, method = recognized, 'OCR'
-                except Exception as exc:
-                    errors.append(f'p.{index + 1}: {exc}')
-            if not _quality(text):
-                errors.append(f'p.{index + 1}: 텍스트 부족; 원본 확인 필요')
-        segments.append({'location': f'p.{index + 1}', 'text': text, 'method': method})
-    return segments, errors, 'PDF + OCR' if used_ocr else 'PDF 텍스트'
+    import pymupdf
+    import pymupdf4llm
+    ocr = ocr and bool(shutil.which('tesseract'))
+    with pymupdf.open(str(path)) as doc:
+        if doc.needs_pass and not doc.authenticate(''):
+            raise ValueError('암호화된 PDF')
+        scanned = [not _quality(page.get_text()) for page in doc]
+        chunks = pymupdf4llm.to_markdown(doc, page_chunks=True, use_ocr=ocr, ocr_language='kor+eng')
+    segments, errors = [], []
+    for chunk in chunks:
+        number = chunk['metadata']['page_number']
+        if not _quality(chunk['text']):
+            errors.append(f'p.{number}: 텍스트 부족; 원본 확인 필요')
+        segments.append({'location': f'p.{number}', 'text': chunk['text'], 'method': 'OCR' if ocr and scanned[number - 1] else 'PDF 텍스트'})
+    return segments, errors, 'PDF + OCR' if ocr and any(scanned) else 'PDF 텍스트'
 
 
 def detect_format(path):
@@ -149,7 +174,8 @@ def detect_format(path):
     if magic.startswith(b'%PDF'):
         return 'pdf'
     if magic.startswith(b'\xd0\xcf\x11\xe0'):
-        return 'hwp'
+        with olefile.OleFileIO(str(path)) as ole:
+            return 'hwp' if ole.exists('FileHeader') else 'xls' if ole.exists('Workbook') else 'doc'
     if zipfile.is_zipfile(path):
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
@@ -159,32 +185,11 @@ def detect_format(path):
                 return 'hwpx'
             if 'xl/workbook.xml' in names:
                 return 'xlsx'
+            if 'ppt/presentation.xml' in names:
+                return 'pptx'
         return 'zip'
-    return 'txt' if path.suffix.lower() == '.txt' else 'unsupported'
-
-
-def _xlsx_segments(path):
-    with zipfile.ZipFile(path) as archive:
-        if sum(i.file_size for i in archive.infolist()) > MAX_ZIP_BYTES:
-            raise ValueError('XLSX 크기 제한 초과')
-        strings = []
-        if 'xl/sharedStrings.xml' in archive.namelist():
-            root = ET.fromstring(archive.read('xl/sharedStrings.xml'))
-            strings = [''.join(n.itertext()) for n in root]
-        segments = []
-        for name in sorted(n for n in archive.namelist() if re.fullmatch(r'xl/worksheets/sheet\d+\.xml', n)):
-            root = ET.fromstring(archive.read(name))
-            rows = []
-            for row in (n for n in root.iter() if n.tag.endswith('}row')):
-                cells = []
-                for cell in row:
-                    value = ''.join(cell.itertext())
-                    if cell.attrib.get('t') == 's' and value.isdigit():
-                        value = strings[int(value)]
-                    cells.append(value)
-                rows.append('\t'.join(cells))
-            segments.append({'location': name, 'text': '\n'.join(rows)})
-        return segments, [], 'XLSX XML'
+    suffix = path.suffix.lower()
+    return 'txt' if suffix == '.txt' else 'html' if suffix in ('.html', '.htm') else 'unsupported'
 
 
 def extract_document(path, ocr=True, use_cache=True):
@@ -205,14 +210,22 @@ def extract_document(path, ocr=True, use_cache=True):
             except (OSError, ValueError):
                 pass
         kind = detect_format(path)
+        if kind in ('hwpx', 'docx', 'xlsx', 'pptx'):
+            with zipfile.ZipFile(path) as archive:
+                if sum(i.file_size for i in archive.infolist()) > MAX_ZIP_BYTES:
+                    raise ValueError('문서 압축 해제 크기 제한 초과')
         if kind == 'hwp':
             segments, errors, method = _hwp_segments(path)
         elif kind == 'pdf':
             segments, errors, method = _pdf_segments(path, ocr)
-        elif kind in ('hwpx', 'docx'):
-            segments, errors, method = _xml_segments(path, kind)
-        elif kind == 'xlsx':
-            segments, errors, method = _xlsx_segments(path)
+        elif kind == 'hwpx':
+            segments, errors, method = _hwpx_segments(path)
+        elif kind in ('docx', 'pptx', 'html'):
+            segments, errors, method = _pandoc_segments(path, kind)
+        elif kind in ('xlsx', 'xls'):
+            segments, errors, method = _excel_segments(path, kind)
+        elif kind == 'doc':
+            raise ValueError('구형 DOC: DOCX로 변환해 주세요')
         elif kind == 'txt':
             segments, errors, method = [{'location': '본문', 'text': extract_text_from_txt(str(path))}], [], '텍스트'
         else:
@@ -311,26 +324,6 @@ def process_folder_result(folder_path, ocr=True):
 
 def process_folder_documents(folder_path):
     return process_folder_result(folder_path)['text']
-
-
-def find_actual_folder_with_files(folder_path):
-    return folder_path
-
-
-def extract_text_from_hwp(path):
-    return extract_document(path, ocr=False)['text']
-
-
-def extract_text_from_pdf(path):
-    return extract_document(path)['text']
-
-
-def extract_text_from_hwpx(path):
-    return extract_document(path, ocr=False)['text']
-
-
-def extract_text_from_docx(path):
-    return extract_document(path, ocr=False)['text']
 
 
 def extract_text_from_txt(path):
