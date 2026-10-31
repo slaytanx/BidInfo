@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import olefile
 import pandas as pd
 
-PARSER_VERSION = '6'
+PARSER_VERSION = '7'
 CACHE_DIR = Path(__file__).parent / 'data/cache/documents'
 MAX_FILE_BYTES = 150 * 1024 * 1024
 MAX_ZIP_BYTES = 500 * 1024 * 1024
@@ -34,11 +34,11 @@ def _hwp_paragraph(data):
 
 
 def parse_hwp_records(data):
-    paragraphs, pos = [], 0
+    records, pos = [], 0
     while pos + 4 <= len(data):
         header = struct.unpack_from('<I', data, pos)[0]
         pos += 4
-        tag, size = header & 1023, header >> 20
+        tag, level, size = header & 1023, (header >> 10) & 1023, header >> 20
         if size == 4095:
             if pos + 4 > len(data):
                 raise ValueError('확장 레코드 길이가 잘렸습니다')
@@ -46,10 +46,28 @@ def parse_hwp_records(data):
             pos += 4
         if pos + size > len(data):
             raise ValueError('본문 레코드가 잘렸습니다')
-        if tag == 67:
-            paragraphs.append(_hwp_paragraph(data[pos:pos + size]))
+        records.append((tag, level, data[pos:pos + size]))
         pos += size
-    return '\n'.join(paragraphs)
+    blocks, i = [], 0
+    while i < len(records):
+        tag, level, body = records[i]
+        i += 1
+        if tag == 67:
+            blocks.append(_hwp_paragraph(body))
+        elif tag == 77 and len(body) >= 8:
+            # 표(77)와 같은 레벨의 LIST_HEADER(72)가 셀이고, 그보다 깊은 문단이 셀 내용이다.
+            rows, cols = struct.unpack_from('<HH', body, 4)
+            grid, cell = [[''] * cols for _ in range(rows)], None
+            while i < len(records) and records[i][1] >= level:
+                tag, depth, body = records[i]
+                i += 1
+                if tag == 72 and depth == level and len(body) >= 12:
+                    col, row = struct.unpack_from('<HH', body, 8)
+                    cell = (row, col) if row < rows and col < cols else None
+                elif tag == 67 and cell:
+                    grid[cell[0]][cell[1]] += ' ' + _hwp_paragraph(body)
+            blocks.append(_md_rows(grid))
+    return '\n'.join(blocks)
 
 
 def _hwp_segments(path):
@@ -84,9 +102,12 @@ def _tag(node):
 
 def _md_table(tbl):
     # shortcut: 병합 셀(colSpan)은 펼치지 않아 열이 밀릴 수 있음, 실제 공고에서 문제되면 cellSpan 반영
-    rows = [[' '.join(''.join(''.join(t.itertext()) for t in tc.iter() if _tag(t) == 't').split()).replace('|', '\\|')
-             for tc in tr if _tag(tc) == 'tc'] for tr in tbl if _tag(tr) == 'tr']
-    rows = [r for r in rows if r]
+    return _md_rows([[''.join(''.join(t.itertext()) for t in tc.iter() if _tag(t) == 't')
+                      for tc in tr if _tag(tc) == 'tc'] for tr in tbl if _tag(tr) == 'tr'])
+
+
+def _md_rows(rows):
+    rows = [[' '.join(c.split()).replace('|', '\\|') for c in r] for r in rows if r]
     if not rows:
         return ''
     width = max(map(len, rows))

@@ -35,6 +35,15 @@ class DocumentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parser.parse_hwp_records(stream[:-3])
 
+    def test_hwp_table_records_to_markdown(self):
+        rec=lambda tag,level,body:struct.pack('<I',tag|level<<10|len(body)<<20)+body
+        text=lambda s:rec(67,2,s.encode('utf-16-le'))
+        cell=lambda col,row:rec(72,1,struct.pack('<HHIHHHH',1,0,0,col,row,1,1))
+        stream=rec(67,0,'앞 문단'.encode('utf-16-le'))+rec(71,0,b' lbt')+rec(77,1,struct.pack('<IHH',0,2,2))
+        for col,row,value in ((0,0,'항목'),(1,0,'기준'),(0,1,'자격'),(1,1,'등록')):stream+=cell(col,row)+text(value)
+        stream+=rec(67,0,'뒤 문단'.encode('utf-16-le'))
+        self.assertEqual(parser.parse_hwp_records(stream),'앞 문단\n| 항목 | 기준 |\n| --- | --- |\n| 자격 | 등록 |\n뒤 문단')
+
     def test_hwp_compression_flag(self):
         text = '입찰 문단'.encode('utf-16-le')
         record = struct.pack('<I',67 | len(text)<<20)+text
