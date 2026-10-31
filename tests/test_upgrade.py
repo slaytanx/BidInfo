@@ -288,6 +288,15 @@ class BudgetAnalysisTests(unittest.TestCase):
             analysis.analyze_bid_with_ollama('서버',text)
             self.assertEqual(call.call_count,count)
 
+    def test_failed_chunk_is_skipped_but_all_failed_is_failure(self):
+        ok=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[])
+        text='가'*9000+'나'*100
+        with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
+            call.side_effect=lambda prompt,*a,**k:json.dumps({'facts':[]} if '항목:' in prompt else ok,ensure_ascii=False) if '나나' in prompt else '깨진 응답'
+            self.assertEqual(analysis.analyze_bid_with_ollama('서버',text)['analysis_status'],'성공')
+            call.side_effect=lambda *a,**k:'깨진 응답'
+            self.assertEqual(analysis.analyze_bid_with_ollama('서버',text+'다')['analysis_status'],'실패')
+
     def test_fieldwise_facts_are_grounded_and_format_checked(self):
         text='제출 마감 2026-11-20 15:00\n입찰보증금은 입찰금액의 5% 이상\n추정가격 5억원\n참가자격 사업자등록증 보유'
         facts=[{'field':'deadline','fact':'2026-11-20 15:00 마감','quote':'제출 마감 2026-11-20 15:00'},

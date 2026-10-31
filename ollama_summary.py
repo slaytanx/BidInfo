@@ -250,7 +250,14 @@ def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords
     prompts = [instructions + chunk for chunk in document_chunks(doc_text)]
     full_key = _key(instructions + doc_text, configs)
     try:
-        parts = [_ground(_cached_json(prompt, configs), doc_text) for prompt in prompts]
+        parts = []
+        for prompt in prompts:
+            try:
+                parts.append(_ground(_cached_json(prompt, configs), doc_text))
+            except Exception:
+                continue  # 한 구간의 응답 오류로 분석 전체를 버리지 않는다. 전부 실패하면 아래에서 실패 처리.
+        if not parts:
+            raise RuntimeError('모든 구간 분석 실패')
         result = _apply_facts(_merge(parts), doc_text, configs)
         result.update(analysis_status='성공', model=result.get('_model', configs[0].get('model', '')), cache_key=full_key)
         return result
