@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import olefile
 import pandas as pd
 
-PARSER_VERSION = '7'
+PARSER_VERSION = '8'
 CACHE_DIR = Path(__file__).parent / 'data/cache/documents'
 MAX_FILE_BYTES = 150 * 1024 * 1024
 MAX_ZIP_BYTES = 500 * 1024 * 1024
@@ -152,7 +152,14 @@ def _pandoc_segments(path, kind):
     proc = subprocess.run(['pandoc', '-f', kind, '-t', 'gfm', '--wrap=none', str(path)], capture_output=True, text=True, timeout=120, check=False)
     if proc.returncode:
         raise ValueError(f'pandoc 변환 실패: {proc.stderr.strip()[:200]}')
-    return [{'location': '본문', 'text': proc.stdout}], [], 'pandoc'
+    return [{'location': '본문', 'text': re.sub(r'<table\b.*?</table>', _html_table, proc.stdout, flags=re.S)}], [], 'pandoc'
+
+
+def _html_table(match):
+    # gfm이 병합 셀 표를 HTML로 내보내면 태그가 글자의 절반 가까이 되어 LLM 추출을 방해한다.
+    cell = lambda html: re.sub(r'<[^>]+>', ' ', html)
+    return _md_rows([[cell(c) for c in re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>', row, re.S)]
+                     for row in re.findall(r'<tr\b.*?</tr>', match.group(0), re.S)])
 
 
 def _excel_segments(path, kind):

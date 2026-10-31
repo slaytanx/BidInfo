@@ -2,6 +2,7 @@ import contextlib
 from decimal import Decimal
 import io
 import json
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -117,6 +118,11 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(parser.detect_format(folder/'word.doc'),'html');self.assertEqual(parser.detect_format(folder/'rtf.doc'),'rtf')
         error_page=Mock(headers={});error_page.iter_content.return_value=[b'<html><body>error</body></html>']
         with self.assertRaises(ValueError):crawler.handle_download_and_extract_zip(error_page,folder,'x.file')
+
+    def test_pandoc_html_table_becomes_markdown(self):
+        html='앞<table><thead><tr><th>항목</th><th colspan="2">기준</th></tr></thead><tbody><tr><td><p>자격</p></td><td>등록</td><td>필수</td></tr></tbody></table>뒤'
+        text=re.sub(r'<table\b.*?</table>',parser._html_table,html,flags=re.S)
+        self.assertEqual(text,'앞| 항목 | 기준 |  |\n| --- | --- | --- |\n| 자격 | 등록 | 필수 |뒤')
 
     @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
     def test_docx_table_via_pandoc(self):
