@@ -280,13 +280,49 @@ class BudgetAnalysisTests(unittest.TestCase):
     def test_tail_is_processed_and_cache_reused(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
             result=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[])
-            call.return_value=json.dumps(result,ensure_ascii=False)
+            call.side_effect=lambda prompt,*a,**k:json.dumps({'facts':[]} if '항목:' in prompt else result,ensure_ascii=False)
             text='앞부분\n'*3000+'후반 요구사항: 특수자격증'
             analysis.analyze_bid_with_ollama('서버',text)
             self.assertTrue(any('특수자격증' in c.args[0] for c in call.call_args_list))
             count=call.call_count
             analysis.analyze_bid_with_ollama('서버',text)
             self.assertEqual(call.call_count,count)
+
+    def test_fieldwise_facts_are_grounded_and_format_checked(self):
+        text='제출 마감 2026-11-20 15:00\n입찰보증금은 입찰금액의 5% 이상\n추정가격 5억원\n참가자격 사업자등록증 보유'
+        facts=[{'field':'deadline','fact':'2026-11-20 15:00 마감','quote':'제출 마감 2026-11-20 15:00'},
+               {'field':'deadline','fact':'2026-12-01 마감','quote':'지어낸 인용 2026-12-01'},
+               {'field':'budget','fact':'입찰보증금 5%','quote':'입찰보증금은 입찰금액의 5% 이상'},
+               {'field':'budget','fact':'추정가격 5억원','quote':'추정가격 5억원'},
+               {'field':'qualifications','fact':'사업자등록증 보유','quote':''},
+               {'field':'duration','fact':'기간 없음','quote':'참가자격'},
+               {'field':'evaluation','fact':'배점 70점','quote':'참가자격'}]
+        base=dict(analysis.SCHEMA,summary='서버',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[],duration='6개월')
+        with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
+            call.side_effect=lambda prompt,*a,**k:json.dumps({'facts':facts} if '항목:' in prompt else base,ensure_ascii=False)
+            result=analysis.analyze_bid_with_ollama('서버',text)
+        self.assertEqual(result['deadline'],'2026-11-20 15:00 마감')           # 지어낸 인용의 사실은 버림
+        self.assertEqual(result['budget'],'추정가격 5억원')                     # 금액 형식이 아닌 값은 버림
+        self.assertEqual(result['qualifications'],'근거 미확인: 사업자등록증 보유')
+        self.assertEqual(result['duration'],'확인 불가')                        # 숫자가 없는 기간 값은 버림
+        self.assertEqual(result['evaluation'],'배점 70점')                     # 형식 검사 대상이 아닌 항목은 인용만 맞으면 유지
+        where=f'원문 문자 1-{len(text)}'
+        self.assertEqual([(e['field'],e['location']) for e in result['evidence']],[('deadline',where),('budget',where),('evaluation',where)])
+
+    def test_fieldwise_failure_keeps_chunk_values(self):
+        base=dict(analysis.SCHEMA,summary='서버',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[],duration='6개월')
+        with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
+            call.side_effect=lambda prompt,*a,**k:'잘못된 응답' if '항목:' in prompt else json.dumps(base,ensure_ascii=False)
+            result=analysis.analyze_bid_with_ollama('서버','본문')
+        self.assertEqual((result['analysis_status'],result['duration']),('성공','근거 미확인: 6개월'))
+
+    def test_passages_pick_keyword_blocks_in_order(self):
+        text=''.join(f'일반 문장 {i}\n' for i in range(400))+'제출 마감 2026-11-20\n'+''.join(f'다른 문장 {i}\n' for i in range(400))+'추정가격 5억원\n'
+        picked=analysis._passages(text,{'마감':3,'추정':3})
+        self.assertLessEqual(sum(len(t) for _,_,t in picked),analysis.PASSAGE_BUDGET)
+        joined=''.join(t for _,_,t in picked);self.assertIn('2026-11-20',joined);self.assertIn('5억원',joined)
+        self.assertEqual([s for s,_,_ in picked],sorted(s for s,_,_ in picked))
+        self.assertTrue(all(text[s:e]==t for s,e,t in picked))
 
     def test_unquoted_conditions_are_unknown(self):
         result=dict(analysis.SCHEMA,deadline='2026-10-30',evidence=[{'field':'deadline','quote':'지어낸 인용','location':'p.1'}])
