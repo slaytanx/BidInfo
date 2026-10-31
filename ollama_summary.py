@@ -35,11 +35,11 @@ def validate_analysis(result):
     score = result.get('fit_score')
     if type(score) is not int or not 0 <= score <= 100:
         raise ValueError('적합도 범위 오류')
-    if not isinstance(result.get('tags'), list) or any(t not in CATEGORIES for t in result['tags']):
-        raise ValueError('분류 태그 오류')
-    for key, kind in [('solution_tags','세부 항목'),('work_tags','업무')]:
-        if not isinstance(result.get(key),list) or any(t not in taxonomy_options(kind) for t in result[key]):
-            raise ValueError('세부 항목/업무 태그 오류')
+    # 허용 목록 밖 태그 하나로 분석 전체를 버리지 않도록 걸러내기만 한다(형식 오류는 그대로 실패).
+    for key, allowed in [('tags', CATEGORIES), ('solution_tags', taxonomy_options('세부 항목')), ('work_tags', taxonomy_options('업무'))]:
+        if not isinstance(result.get(key), list):
+            raise ValueError('분류 태그 형식 오류')
+        result[key] = [t for t in result[key] if t in allowed]
     result.update({k:v for k,v in normalize_classification(result).items() if k in ('tags','solution_tags','work_tags')})
     if not isinstance(result.get('evidence'), list) or any(not isinstance(e, dict) or not all(isinstance(e.get(k), str) for k in ('field', 'quote', 'location')) for e in result['evidence']):
         raise ValueError('근거 형식 오류')

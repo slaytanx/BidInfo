@@ -223,6 +223,12 @@ class BudgetAnalysisTests(unittest.TestCase):
         with self.assertRaises(ValueError):analysis.validate_analysis({'summary':'불완전'})
         with self.assertRaises(Exception):llm.parse_json('잘못된 JSON')
 
+    def test_unknown_tags_are_dropped_not_fatal(self):
+        result=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라','없는분야'],solution_tags=['서버','없는항목'],work_tags=['구축','없는업무'],evidence=[])
+        checked=analysis.validate_analysis(result)
+        self.assertEqual((checked['tags'],checked['solution_tags'],checked['work_tags']),(['인프라'],['서버'],['구축']))
+        with self.assertRaises(ValueError):analysis.validate_analysis(dict(result,tags='인프라'))
+
     def test_tail_is_processed_and_cache_reused(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
             result=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[])
