@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import olefile
 import pandas as pd
 
-PARSER_VERSION = '8'
+PARSER_VERSION = '9'
 CACHE_DIR = Path(__file__).parent / 'data/cache/documents'
 MAX_FILE_BYTES = 150 * 1024 * 1024
 MAX_ZIP_BYTES = 500 * 1024 * 1024
@@ -146,6 +146,30 @@ def _hwpx_segments(path):
     return segments, [], 'HWPX 마크다운'
 
 
+def _docx_lines(node, lines, buffer):
+    for child in node:
+        tag = _tag(child)
+        if tag == 'Fallback':
+            continue  # 텍스트 상자의 호환용 사본(mc:Choice와 같은 내용)
+        if tag == 't':
+            buffer.append(child.text or '')
+        elif tag == 'p':
+            own = []
+            _docx_lines(child, lines, own)
+            if ''.join(own).strip():
+                lines.append(''.join(own).strip())
+        else:
+            _docx_lines(child, lines, buffer)
+
+
+def _docx_segments(path):
+    # 표를 행·열로 나누면 셀 속 긴 문장이 끊겨 LLM 추출이 떨어진다(3개 모델 3회 평균 비교). 문단 단위 평문으로 읽는다.
+    with zipfile.ZipFile(path) as archive:
+        lines = []
+        _docx_lines(ET.fromstring(archive.read('word/document.xml')), lines, [])
+    return [{'location': '본문', 'text': '\n'.join(lines)}], [], 'DOCX 문단'
+
+
 def _pandoc_segments(path, kind):
     if not shutil.which('pandoc'):
         raise RuntimeError('pandoc 미설치')
@@ -257,7 +281,9 @@ def extract_document(path, ocr=True, use_cache=True):
             segments, errors, method = _pdf_segments(path, ocr)
         elif kind == 'hwpx':
             segments, errors, method = _hwpx_segments(path)
-        elif kind in ('docx', 'pptx', 'html', 'rtf'):
+        elif kind == 'docx':
+            segments, errors, method = _docx_segments(path)
+        elif kind in ('pptx', 'html', 'rtf'):
             segments, errors, method = _pandoc_segments(path, kind)
         elif kind in ('xlsx', 'xls'):
             segments, errors, method = _excel_segments(path, kind)

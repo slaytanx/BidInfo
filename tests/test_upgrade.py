@@ -125,14 +125,21 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(text,'앞| 항목 | 기준 |  |\n| --- | --- | --- |\n| 자격 | 등록 | 필수 |뒤')
 
     @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
-    def test_docx_table_via_pandoc(self):
+    def test_docx_paragraphs_in_order(self):
         import subprocess
         p=self.root/'rfp.docx'
         subprocess.run(['pandoc','-f','gfm','-o',str(p)],input='# 공고\n\n| 항목 | 기준 |\n|---|---|\n| 자격 | 등록 |\n',text=True,check=True)
         result=parser.extract_document(p)
-        self.assertEqual(result['method'],'pandoc');self.assertRegex(result['text'],r'\| 자격 +\| 등록 +\|')
-        with patch.object(parser.shutil,'which',return_value=None):
-            self.assertIn('pandoc 미설치',parser.extract_document(p,use_cache=False)['errors'])
+        self.assertEqual(result['method'],'DOCX 문단');self.assertEqual(result['text'],'[본문]\n공고\n항목\n기준\n자격\n등록')
+
+    def test_docx_textbox_read_once_in_order(self):
+        p=self.root/'box.docx'
+        body=('<w:document xmlns:w="w" xmlns:mc="mc"><w:body><w:p><w:r><w:t>앞 문단</w:t></w:r></w:p>'
+              '<w:p><w:r><mc:AlternateContent><mc:Choice><w:txbxContent><w:p><w:r><w:t>상자 </w:t><w:t>내용</w:t></w:r></w:p></w:txbxContent></mc:Choice>'
+              '<mc:Fallback><w:txbxContent><w:p><w:r><w:t>상자 내용</w:t></w:r></w:p></w:txbxContent></mc:Fallback></mc:AlternateContent></w:r></w:p>'
+              '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>셀 문장</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>')
+        with zipfile.ZipFile(p,'w') as z:z.writestr('word/document.xml',body)
+        self.assertEqual(parser.extract_document(p)['text'],'[본문]\n앞 문단\n상자 내용\n셀 문장')
 
     def test_cache_and_changed_content(self):
         p=self.root/'sample.txt';p.write_text('서버 구축 입찰 안내')
