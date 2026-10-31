@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import olefile
 import pandas as pd
 
-PARSER_VERSION = '5'
+PARSER_VERSION = '6'
 CACHE_DIR = Path(__file__).parent / 'data/cache/documents'
 MAX_FILE_BYTES = 150 * 1024 * 1024
 MAX_ZIP_BYTES = 500 * 1024 * 1024
