@@ -134,7 +134,8 @@ def call_openrouter(prompt, api_key, model_name=CLOUD_MODELS[0], budget=None, ma
     # UTF-8 바이트 수는 텍스트 토큰 수의 보수적인 상한으로 사용한다.
     reserve = input_price * (len(prompt.encode('utf-8')) + 256) + output_price * max_tokens
     payload = {'model': model_name, 'messages': [{'role': 'user', 'content': prompt}], 'temperature': 0,
-               'max_tokens': max_tokens, 'reasoning': {'effort': 'low', 'exclude': True},
+               # effort=low로는 deepseek-v4-flash가 max_tokens를 추론에 다 써 본문이 비거나 끊긴다.
+               'max_tokens': max_tokens, 'reasoning': {'enabled': False},
                'provider': {'sort': 'throughput', 'max_price': {'prompt': float(input_price * 1000000), 'completion': float(output_price * 1000000), 'request': 0}}}
     if json_mode:
         payload['response_format'] = {'type': 'json_object'}
