@@ -191,7 +191,10 @@ def _pdf_segments(path, ocr=True):
 def detect_format(path):
     path = Path(path)
     with path.open('rb') as file:
-        magic = file.read(8)
+        head = file.read(512)
+    magic = head[:8]
+    if magic.startswith(b'{\\rtf'):
+        return 'rtf'
     if magic.startswith(b'%PDF'):
         return 'pdf'
     if magic.startswith(b'\xd0\xcf\x11\xe0'):
@@ -209,8 +212,14 @@ def detect_format(path):
             if 'ppt/presentation.xml' in names:
                 return 'pptx'
         return 'zip'
-    suffix = path.suffix.lower()
-    return 'txt' if suffix == '.txt' else 'html' if suffix in ('.html', '.htm') else 'unsupported'
+    # 다운로드 중인 x.doc.part는 원래 확장자로 판단한다.
+    suffix = (Path(path.stem).suffix if path.suffix.lower() == '.part' else path.suffix).lower()
+    if suffix in ('.html', '.htm'):
+        return 'html'
+    # Word가 저장한 HTML(.doc)만 문서로 받고, 이름 없는 HTML 응답은 오류 페이지로 거부한다.
+    if suffix == '.doc' and re.match(rb'\s*(<!doctype html|<html)', head.lstrip(b'\xef\xbb\xbf'), re.I):
+        return 'html'
+    return 'txt' if suffix == '.txt' else 'unsupported'
 
 
 def extract_document(path, ocr=True, use_cache=True):
@@ -241,7 +250,7 @@ def extract_document(path, ocr=True, use_cache=True):
             segments, errors, method = _pdf_segments(path, ocr)
         elif kind == 'hwpx':
             segments, errors, method = _hwpx_segments(path)
-        elif kind in ('docx', 'pptx', 'html'):
+        elif kind in ('docx', 'pptx', 'html', 'rtf'):
             segments, errors, method = _pandoc_segments(path, kind)
         elif kind in ('xlsx', 'xls'):
             segments, errors, method = _excel_segments(path, kind)

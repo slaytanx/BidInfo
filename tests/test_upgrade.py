@@ -105,6 +105,20 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(result['status'],'실패');self.assertEqual(result['files'][0]['errors'],['구형 DOC: DOCX로 변환해 주세요'])
 
     @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
+    def test_rtf_and_word_html_named_doc(self):
+        folder=self.root/'dl';folder.mkdir()
+        bodies={'rtf.doc':rb'{\rtf1\ansi Proposal deadline notice\par}',
+                'word.doc':'<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><p>제안 마감 안내</p></body></html>'.encode()}
+        for name,body in bodies.items():
+            response=Mock(headers={'Content-Disposition':f'attachment; filename="{name}"'});response.iter_content.return_value=[body]
+            saved=Path(crawler.handle_download_and_extract_zip(response,folder,'x'))
+            result=parser.extract_document(saved)
+            self.assertEqual(result['method'],'pandoc');self.assertEqual(result['status'],'성공')
+        self.assertEqual(parser.detect_format(folder/'word.doc'),'html');self.assertEqual(parser.detect_format(folder/'rtf.doc'),'rtf')
+        error_page=Mock(headers={});error_page.iter_content.return_value=[b'<html><body>error</body></html>']
+        with self.assertRaises(ValueError):crawler.handle_download_and_extract_zip(error_page,folder,'x.file')
+
+    @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
     def test_docx_table_via_pandoc(self):
         import subprocess
         p=self.root/'rfp.docx'
