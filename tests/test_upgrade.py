@@ -84,6 +84,17 @@ class DocumentTests(unittest.TestCase):
         with patch.object(parser.olefile,'OleFileIO',return_value=ole):
             self.assertIn('DOCX로 변환',parser.extract_document(p)['errors'][0])
 
+    def test_legacy_doc_download_is_kept_with_reason(self):
+        ole=Mock();ole.__enter__=Mock(return_value=ole);ole.__exit__=Mock(return_value=False);ole.exists=lambda n:n=='WordDocument'
+        response=Mock(headers={'Content-Disposition':'attachment; filename="old_rfp.file"'})
+        response.iter_content.return_value=[b'\xd0\xcf\x11\xe0'+bytes(100)]
+        folder=self.root/'dl';folder.mkdir()
+        with patch.object(parser.olefile,'OleFileIO',return_value=ole):
+            saved=Path(crawler.handle_download_and_extract_zip(response,folder,'x'))
+            result=parser.process_folder_result(folder)
+        self.assertEqual(saved.name,'old_rfp.doc');self.assertTrue(saved.exists())
+        self.assertEqual(result['status'],'실패');self.assertEqual(result['files'][0]['errors'],['구형 DOC: DOCX로 변환해 주세요'])
+
     @unittest.skipUnless(shutil.which('pandoc'),'pandoc 없음')
     def test_docx_table_via_pandoc(self):
         import subprocess
