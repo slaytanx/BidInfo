@@ -94,16 +94,38 @@ def _flat(text):
     return re.sub(r'<[^>]+>|[\s|*#\\_]+', '', text)
 
 
+GROUNDED = ['deadline', 'submit_type', 'required_docs', 'qualifications', 'budget', 'duration', 'evaluation', 'cautions']
+UNVERIFIED = '근거 미확인: '
+
+
 def _ground(result, text):
     valid, flat = [], _flat(text)
     for evidence in result['evidence']:
         quote = evidence['quote']
         if quote and (quote in text or len(_flat(quote)) >= 4 and _flat(quote) in flat) and evidence['location']:
             valid.append(evidence)
+    claimed = {e['field'] for e in result['evidence']}
     result['evidence'] = valid
-    for field in ['deadline', 'submit_type', 'required_docs', 'qualifications', 'budget', 'duration', 'evaluation', 'cautions']:
-        if result[field] != '확인 불가' and not any(e['field'] == field for e in valid):
-            result[field] = '확인 불가'
+    for field in GROUNDED:
+        if result[field] == '확인 불가' or any(e['field'] == field for e in valid):
+            continue
+        # 인용이 원문과 어긋나면 지어낸 값으로 보고 지우고, 인용을 안 붙였으면 사람이 확인하도록 표시만 한다.
+        result[field] = '확인 불가' if field in claimed else UNVERIFIED + result[field].removeprefix(UNVERIFIED)
+    return result
+
+
+def _merge(parts):
+    """구간 결과를 코드로 합친다. 같은 필드에 근거 있는 값이 있으면 그것만 쓴다."""
+    result = dict(parts[0])
+    for field in GROUNDED:
+        values = list(dict.fromkeys(p[field] for p in parts if p[field] != '확인 불가'))
+        verified = [v for v in values if not v.startswith(UNVERIFIED)]
+        result[field] = ' / '.join(verified or values) or '확인 불가'
+    result['fit_score'] = max(p['fit_score'] for p in parts)
+    result['tags'] = [t for t in CATEGORIES if any(t in p['tags'] for p in parts)]
+    for key in ('solution_tags', 'work_tags'):
+        result[key] = list(dict.fromkeys(t for p in parts for t in p[key]))
+    result['evidence'] = list({(e['field'], e['quote'], e['location']): e for p in parts for e in p['evidence']}.values())
     return result
 
 
@@ -122,21 +144,7 @@ def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords
     full_key = _key(instructions + doc_text, configs)
     try:
         parts = [_ground(_cached_json(prompt, configs), doc_text) for prompt in prompts]
-        if len(parts) == 1:
-            result = parts[0]
-        else:
-            # 이미 검증한 구간 결과를 순차 병합해 입력 상한을 넘지 않는다.
-            result = parts[0]
-            for part in parts[1:]:
-                inputs = [dict(r, evidence=r['evidence'][-12:]) for r in (result, part)]
-                prompt = instructions + '아래 구간 분석을 통합하세요. 충돌하는 마감일은 모두 표시하고 근거를 유지하세요.\n' + json.dumps(inputs, ensure_ascii=False)
-                merged = _cached_json(prompt, configs)
-                merged['tags'] = [t for t in CATEGORIES if t in set(result['tags'] + part['tags'] + merged['tags'])]
-                for key in ('solution_tags','work_tags'):
-                    merged[key]=list(dict.fromkeys(result[key]+part[key]+merged[key]))
-                all_evidence = result['evidence'] + part['evidence'] + merged['evidence']
-                merged['evidence'] = list({(e['field'], e['quote'], e['location']): e for e in all_evidence}.values())
-                result = _ground(merged, doc_text)
+        result = _merge(parts)
         result.update(analysis_status='성공', model=result.get('_model', configs[0].get('model', '')), cache_key=full_key)
         return result
     except Exception:

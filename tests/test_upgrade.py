@@ -252,6 +252,15 @@ class BudgetAnalysisTests(unittest.TestCase):
         self.assertEqual(analysis._ground(result,'원문')['evidence'],[])
         self.assertEqual(result['deadline'],'확인 불가')
 
+    def test_uncited_value_is_marked_and_merge_prefers_verified(self):
+        ev={'field':'deadline','quote':'마감 2026-11-20','location':'p.1'}
+        first=analysis._ground(dict(analysis.SCHEMA,deadline='2026-11-20',budget='5억원',evidence=[ev]),'마감 2026-11-20')
+        self.assertEqual((first['deadline'],first['budget']),('2026-11-20','근거 미확인: 5억원'))
+        second=analysis._ground(dict(analysis.SCHEMA,deadline='2026-11-21',budget='확인 불가',evidence=[]),'후반')
+        merged=analysis._merge([dict(first,tags=['인프라']),dict(second,fit_score=70,tags=['보안'])])
+        self.assertEqual(merged['deadline'],'2026-11-20');self.assertEqual(merged['budget'],'근거 미확인: 5억원')
+        self.assertEqual((merged['fit_score'],merged['evidence']),(70,[ev]));self.assertEqual(set(merged['tags']),{'인프라','보안'})
+
     def test_budget_exhausted_uses_local(self):
         budget=llm.RunBudget(0)
         with patch.object(budget,'price',return_value=(Decimal('0.01'),Decimal('0.01'))),patch.object(llm,'get_secret',return_value='fixture'),patch.object(llm,'call_ollama',return_value='local'),patch.object(llm.requests,'post') as post:
