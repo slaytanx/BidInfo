@@ -163,6 +163,34 @@ class DocumentTests(unittest.TestCase):
             parser.extract_zip(path, self.root/'out')
         self.assertEqual((self.root/'out/rfp.txt').read_text(), '변경된 자격요건')
 
+    def test_skip_reason_by_name_and_body(self):
+        skip=parser.skip_reason
+        for name in ('입찰 참여 신청서.pdf','3. 제안요청서(RFP) 배부신청서.pdf','붙임3 청렴 각서.hwp','개인정보 동의서.hwp','물품구매계약서(안).hwp'):
+            self.assertTrue(skip(name),name)
+        for name in ('입찰공고.pdf','제안요청서(RFP).pdf','물품명세서.xlsx','제안요청서 및 계약서(안).pdf','입찰공고 및 참가신청서.pdf'):
+            self.assertEqual(skip(name),'',name)
+        self.assertEqual(skip('notice_1.pdf','# ~~입찰 참여 신청서~~\n내용'),'신청·서약 양식')
+        self.assertEqual(skip('x.docx','[본문]\n(별첨 3)\n확약서'),'별첨 서식')
+        self.assertEqual(skip('notice_2.pdf','[p.1]\n입찰 공고\n신청서를 제출'),'')
+        self.assertEqual(skip('물품구매입찰유의서.hwp','입찰보증금은 입찰금액의 5% 이상'),'표준 입찰유의서')
+        self.assertEqual(skip('물품구매입찰유의서.hwp','입찰 마감 2026.11.20 까지'),'')
+        self.assertEqual(skip('물품구매입찰유의서.hwp','추정가격 1,234,000,000원'),'')
+        self.assertEqual(skip('물품구매입찰유의서.hwp'),'')  # 본문 없이는 표준 여부를 모른다
+
+    def test_folder_skips_forms_and_keeps_status(self):
+        (self.root/'입찰공고.txt').write_text('서버 구축 입찰 공고. 제출 마감 2026-11-20 15:00. 참가자격은 사업자등록증 보유 업체.')
+        (self.root/'참가신청서.txt').write_text('참가 신청서 양식 성명 ____ 서명 ____')
+        (self.root/'물품구매입찰유의서.txt').write_text('입찰보증금 납부 방법과 낙찰자 결정 방법에 관한 일반 규정입니다. 모든 입찰자는 이를 준수해야 합니다.')
+        result=parser.process_folder_result(self.root)
+        self.assertEqual(result['status'],'성공');self.assertIn('제출 마감',result['text']);self.assertNotIn('성명',result['text']);self.assertNotIn('일반 규정',result['text'])
+        skipped={f['file']:f['skip'] for f in result['files'] if f['status']=='생략'}
+        self.assertEqual(skipped,{'참가신청서.txt':'신청·서약 양식','물품구매입찰유의서.txt':'표준 입찰유의서'})
+
+    def test_folder_with_only_forms_is_not_analyzed(self):
+        (self.root/'참가신청서.txt').write_text('참가 신청서 양식 성명 ____')
+        result=parser.process_folder_result(self.root)
+        self.assertEqual((result['status'],result['text']),('실패',''));self.assertIn('분석 대상 문서 없음',result['errors'][0])
+
     def test_failed_document_does_not_read_other_folder(self):
         other=self.root/'비슷한제목';other.mkdir();(other/'file.txt').write_text('다른 공고의 데이터')
         result=parser.process_folder_result(self.root/'없는폴더')

@@ -351,6 +351,30 @@ def extract_zip(zip_path, extract_to):
                         temporary.unlink(missing_ok=True)
 
 
+CONCRETE_VALUE = re.compile(r'20\d{2}\s*[.\-년]\s*\d{1,2}\s*[.\-월]\s*\d{1,2}|\d{1,3}(?:,\d{3}){2,}\s*원|\d+\s*억')
+
+
+def skip_reason(name, text=''):
+    """사업 내용·조건이 없는 신청·계약·서약 양식과 표준 유의서는 분석하지 않는다. 해당하면 사유를, 아니면 ''를 돌려준다."""
+    # shortcut: 파일 단위 판별이라 공고문 뒤에 양식이 붙은 복합 파일은 걸러내지 못함, 필요하면 페이지 단위로 확장
+    if '공고' in name:
+        return ''
+    if re.search('신청서|서약|각서|동의서', name):
+        return '신청·서약 양식'
+    if '계약서' in name and not re.search('요청서|RFP', name):
+        return '계약서'
+    # 구체적인 날짜·금액이 없으면 표준 조항으로 본다. 본문이 필요하므로 추출 뒤에만 판단한다.
+    if '유의서' in name and text and not CONCRETE_VALUE.search(text):
+        return '표준 입찰유의서'
+    # 파일명에 단서가 없는 경우(예: notice_123.pdf)는 본문 첫 줄로 본다.
+    first = next((l.strip() for l in re.sub(r'^\[[^\]]*\]\n', '', text, flags=re.M).splitlines() if len(l.strip()) >= 4), '')
+    if first.startswith('(별첨'):
+        return '별첨 서식'
+    if len(first) < 40 and '신청서' in first and '공고' not in first:
+        return '신청·서약 양식'
+    return ''
+
+
 def process_folder_result(folder_path, ocr=True):
     folder = Path(folder_path)
     if not folder.is_dir():
@@ -372,16 +396,23 @@ def process_folder_result(folder_path, ocr=True):
     for path in sorted(folder.rglob('*')):
         if not path.is_file() or path.suffix.lower() in ('.zip', '.json', '.db'):
             continue
+        if reason := skip_reason(path.name):
+            results.append({'file': path.name, 'status': '생략', 'skip': reason, 'errors': [], 'text': ''})
+            continue
         result = extract_document(path, ocr)
         if result.get('hash') in digests:
             continue
         if result.get('hash'):
             digests.add(result['hash'])
+        if reason := skip_reason(path.name, result['text']):
+            result.update(status='생략', skip=reason, text='', segments=[])
         results.append(result)
     text = '\n\n'.join(f"[파일: {r['file']}]\n{r['text']}" for r in results if r['text'])
     if not results:
         errors.append('읽을 첨부문서 없음: 원본 공고 확인 필요')
-    failed = errors or any(r['status'] != '성공' for r in results)
+    elif all(r['status'] == '생략' for r in results):
+        errors.append('분석 대상 문서 없음: 신청·계약 양식만 첨부됨, 원본 공고 확인 필요')
+    failed = errors or any(r['status'] not in ('성공', '생략') for r in results)
     return {'text': text, 'files': results, 'errors': errors, 'status': '부분 성공' if text and failed else '성공' if text else '실패'}
 
 
