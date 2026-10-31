@@ -229,6 +229,13 @@ class BudgetAnalysisTests(unittest.TestCase):
         self.assertEqual((checked['tags'],checked['solution_tags'],checked['work_tags']),(['인프라'],['서버'],['구축']))
         with self.assertRaises(ValueError):analysis.validate_analysis(dict(result,tags='인프라'))
 
+    def test_ground_ignores_whitespace_and_markdown_only(self):
+        text='| 제출 마감 | **2026-11-20\n15:00** |'
+        ev=lambda q:{'field':'deadline','quote':q,'location':'p.1'}
+        result=analysis._ground(dict(analysis.SCHEMA,deadline='2026-11-20 15:00',evidence=[ev('제출 마감 2026-11-20 15:00'),ev('마감 2026-12-01')]),text)
+        self.assertEqual([e['quote'] for e in result['evidence']],['제출 마감 2026-11-20 15:00']);self.assertEqual(result['deadline'],'2026-11-20 15:00')
+        self.assertEqual(analysis._ground(dict(analysis.SCHEMA,deadline='x',evidence=[ev('마감 2026-12-01')]),text)['deadline'],'확인 불가')
+
     def test_tail_is_processed_and_cache_reused(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
             result=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[])

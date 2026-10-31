@@ -1,6 +1,7 @@
 """긴 RFP 전체를 구간별로 분석하고 검증된 JSON과 근거를 반환한다."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import tempfile
 import os
@@ -88,10 +89,16 @@ def _cached_json(prompt, configs):
     raise RuntimeError('모든 분석 엔진 실패 또는 잘못된 JSON') from error
 
 
+def _flat(text):
+    # 줄바꿈·공백, Markdown 표·강조 기호, pandoc HTML 표 태그만 다른 인용은 같은 원문으로 본다.
+    return re.sub(r'<[^>]+>|[\s|*#\\_]+', '', text)
+
+
 def _ground(result, text):
-    valid = []
+    valid, flat = [], _flat(text)
     for evidence in result['evidence']:
-        if evidence['quote'] and evidence['quote'] in text and evidence['location']:
+        quote = evidence['quote']
+        if quote and (quote in text or len(_flat(quote)) >= 4 and _flat(quote) in flat) and evidence['location']:
             valid.append(evidence)
     result['evidence'] = valid
     for field in ['deadline', 'submit_type', 'required_docs', 'qualifications', 'budget', 'duration', 'evaluation', 'cautions']:
