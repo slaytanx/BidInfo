@@ -227,6 +227,8 @@ def _apply_facts(result, text, configs):
             facts = _extract_facts(text, fields, keywords, configs)
         except Exception:
             continue
+        if not facts:  # 묶음 전체가 비면 모델 실패로 보고 구간 분석 값을 지우지 않는다.
+            continue
         for field in fields:
             ok = [f['fact'] for f in facts if f['field'] == field and f['verified']]
             no = [f['fact'] for f in facts if f['field'] == field and not f['verified']]
@@ -259,6 +261,8 @@ def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords
         if not parts:
             raise RuntimeError('모든 구간 분석 실패')
         result = _apply_facts(_merge(parts), doc_text, configs)
+        if len(parts) < len(prompts):
+            result['cautions'] = f'일부 구간 분석 실패({len(prompts) - len(parts)}/{len(prompts)}): 원문 확인 필요; ' + result['cautions']
         result.update(analysis_status='성공', model=result.get('_model', configs[0].get('model', '')), cache_key=full_key)
         return result
     except Exception:
