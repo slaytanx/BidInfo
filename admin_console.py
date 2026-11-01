@@ -16,6 +16,15 @@ def login_allowed(expected, typed):
     return bool(expected) and typed == expected
 
 
+def get_bid_r2_folder_key(folder_p: str) -> str:
+    """공고 로컬 경로에서 R2 폴더 키('data/<folder_name>')를 안전하게 추출한다."""
+    if not folder_p:
+        return ""
+    clean_p = folder_p.rstrip("/\\")
+    folder_bname = os.path.basename(clean_p)
+    return f"data/{folder_bname}" if folder_bname else ""
+
+
 # 💡 시크릿 톱니바퀴 클릭 시 뜨는 🔒 시스템 어드민 관리자 팝업 모달창
 @st.dialog("🔒 시스템 관리자 센터 (Admin Console)", width="large")
 def show_admin_console_modal(expected_password):
@@ -95,8 +104,9 @@ def show_admin_console_modal(expected_password):
                                     print(f"⚠️ 로컬 폴더 삭제 실패: {ex}")
 
                             if folder_p:
-                                folder_bname = os.path.basename(folder_p)
-                                delete_r2_folder(f"data/{folder_bname}")
+                                r2_key = get_bid_r2_folder_key(folder_p)
+                                if r2_key:
+                                    delete_r2_folder(r2_key)
 
                         delete_bids(del_ids)
                         upload_db_to_r2(DB_PATH)

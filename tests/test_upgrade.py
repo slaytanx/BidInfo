@@ -429,7 +429,57 @@ class PageTests(unittest.TestCase):
         with patch.object(budget, 'price', return_value=(Decimal('.000001'),Decimal('.000001'))), patch.object(llm.requests, 'post', side_effect=[busy,okay]), patch.object(llm.time,'sleep'):
             llm.call_openrouter('시험', 'synthetic-key', budget=budget, max_tokens=100)
         self.assertEqual(budget.calls,2)
-        self.assertGreater(budget.spent,Decimal('.001'))
+        self.assertEqual(budget.spent,Decimal('.001'))
+
+    def test_cloud_retry_settle_zero_cost_no_double_charge(self):
+        budget = llm.RunBudget(1)
+        busy = Mock(status_code=429, headers={'Retry-After': '0'})
+        okay = Mock(status_code=200)
+        okay.json.return_value = {'usage': {'cost': .0015}, 'choices': [{'message': {'content': '{"result": 1}'}}]}
+        with patch.object(budget, 'price', return_value=(Decimal('.000001'), Decimal('.000001'))), patch.object(llm.requests, 'post', side_effect=[busy, okay]), patch.object(llm.time, 'sleep'):
+            res = llm.call_openrouter('테스트', 'synthetic-key', budget=budget, max_tokens=100)
+        self.assertEqual(res, '{"result": 1}')
+        self.assertEqual(budget.calls, 2)
+        self.assertEqual(budget.reserved, Decimal('0'))
+        self.assertEqual(budget.spent, Decimal('.0015'))
+
+    def test_generate_llm_response_preserves_exception(self):
+        configs = [{'provider': 'Local Ollama', 'model': 'llama3'}]
+        with patch.object(llm, 'call_ollama', side_effect=RuntimeError('Connection refused to Ollama')):
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.generate_llm_response('prompt', configs)
+            self.assertIn('Local Ollama: Connection refused to Ollama', str(ctx.exception))
+
+        nim_configs = [{'provider': 'NVIDIA NIM', 'model': 'meta/llama-3.1-8b', 'api_key': ''}]
+        with self.assertRaises(llm.LLMError) as ctx2:
+            llm.generate_llm_response('prompt', nim_configs)
+        self.assertIn('NVIDIA NIM: API 키 미설정', str(ctx2.exception))
+
+    def test_extract_facts_short_quote_in_text(self):
+        text = '사업기간은 6개월이며 총 사업예산은 1억원이다.'
+        raw_facts = [
+            {'field': 'duration', 'fact': '사업기간 6개월', 'quote': '6개월'},
+            {'field': 'budget', 'fact': '사업예산 1억원', 'quote': '1억원'}
+        ]
+        with patch.object(analysis, '_cached_facts', return_value=raw_facts):
+            facts = analysis._extract_facts(text, ['duration', 'budget'], {'개월': 1, '억원': 1}, [])
+        self.assertEqual(len(facts), 2)
+        self.assertTrue(facts[0]['verified'])
+        self.assertEqual(facts[0]['quote'], '6개월')
+        self.assertTrue(facts[1]['verified'])
+        self.assertEqual(facts[1]['quote'], '1억원')
+
+    def test_extract_facts_seen_not_poisoned_by_invalid_quote(self):
+        text = '사업기간은 6개월이다.'
+        raw_facts = [
+            {'field': 'duration', 'fact': '사업기간 6개월', 'quote': '거짓기간'},
+            {'field': 'duration', 'fact': '사업기간 6개월', 'quote': '6개월'}
+        ]
+        with patch.object(analysis, '_cached_facts', return_value=raw_facts):
+            facts = analysis._extract_facts(text, ['duration'], {'개월': 1}, [])
+        self.assertEqual(len(facts), 1)
+        self.assertTrue(facts[0]['verified'])
+        self.assertEqual(facts[0]['quote'], '6개월')
 
 
 if __name__ == '__main__':unittest.main()

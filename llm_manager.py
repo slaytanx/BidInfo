@@ -149,6 +149,7 @@ def call_openrouter(prompt, api_key, model_name=CLOUD_MODELS[0], budget=None, ma
                 response = requests.post('https://openrouter.ai/api/v1/chat/completions', headers=headers, json=payload, timeout=(5, 90))
                 if response.status_code in (429, 500, 502, 503, 504):
                     if attempt == 0:
+                        cost = 0
                         time.sleep(min(5, max(1, float(response.headers.get('Retry-After', '1')))))
                         continue
                 if response.status_code >= 400:
@@ -191,8 +192,8 @@ def generate_llm_response(prompt, engine_configs, json_mode=False, max_tokens=18
                     headers={'Authorization': f'Bearer {key}'}, json={'model': config['model'], 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}, timeout=(5, 90))
                 response.raise_for_status()
                 return response.json()['choices'][0]['message']['content']
-        except Exception:
-            errors.append(f'{provider}: 호출 실패')
+        except Exception as exc:
+            errors.append(f'{provider}: {exc}')
     raise LLMError('; '.join(errors) or '사용 가능한 엔진 없음')
 
 

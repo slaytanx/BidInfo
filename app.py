@@ -307,9 +307,12 @@ with st.sidebar:
         st.caption("OpenRouter 키가 없어 로컬 모델로 분석합니다. 관리자 설정에서 연결할 수 있습니다.")
     st.caption("애매한 공고는 상세 확인 후 판단합니다. 본문이 부족하면 원본 확인 상태로 표시합니다.")
     force_refresh = st.checkbox("기존 공고의 첨부도 새로 확인", value=False)
-    r2_enabled = st.checkbox("R2 동기화 사용", value=get_setting("r2_enabled", "0") == "1")
-    save_setting("r2_enabled", "1" if r2_enabled else "0")
-    os.environ["BIDINFO_R2_ENABLED"] = "1" if r2_enabled else "0"
+    current_r2 = get_setting("r2_enabled", "0")
+    r2_enabled = st.checkbox("R2 동기화 사용", value=(current_r2 == "1"))
+    new_r2 = "1" if r2_enabled else "0"
+    if new_r2 != current_r2:
+        save_setting("r2_enabled", new_r2)
+    os.environ["BIDINFO_R2_ENABLED"] = new_r2
     if r2_enabled and st.button("로컬 DB·첨부를 R2에 동기화"):
         from pathlib import Path
         from r2_storage import sync_local_to_r2
@@ -610,13 +613,15 @@ with tab2:
                 st.markdown(f"🎯 **적합 사유**: {row['fit_reason']}")
 
                 st.markdown("---")
+                rfp_state_key = f"rfp_report_{row['bid_id']}"
                 rfp_btn_key = f"rfp_btn_{row['bid_id']}"
                 if st.button(f"📄 [{row['title'][:20]}...] RFP 1장 요약 리포트 생성", key=rfp_btn_key):
                     with st.spinner("첨부 서류를 분석하여 RFP 1장 요약 리포트를 생성 중입니다..."):
                         doc_text = process_folder_documents(row["folder_path"])
-                        rfp_report = generate_rfp_one_pager(row["title"], doc_text, engine_configs=engine_list)
-                        st.markdown("#### 📄 RFP 1장 요약 리포트:")
-                        st.info(rfp_report)
+                        st.session_state[rfp_state_key] = generate_rfp_one_pager(row["title"], doc_text, engine_configs=engine_list)
+                if rfp_state_key in st.session_state:
+                    st.markdown("#### 📄 RFP 1장 요약 리포트:")
+                    st.info(st.session_state[rfp_state_key])
 
 # TAB 3: AI 서류 Q&A
 with tab3:

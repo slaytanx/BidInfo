@@ -18,7 +18,9 @@ class TaxonomyTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory()
         self.patch=patch.object(db,'DB_PATH',str(Path(self.temp.name)/'fixture.db'));self.patch.start()
         db.init_db()
+        taxonomy.load_taxonomy.cache_clear()
     def tearDown(self):
+        taxonomy.load_taxonomy.cache_clear()
         self.patch.stop();self.temp.cleanup()
 
     def test_three_axes_and_synonyms(self):
@@ -147,6 +149,70 @@ class TaxonomyTests(unittest.TestCase):
             self.assertEqual(db.load_all_bids()[0]['classification_status'],'수집 대기')
             self.assertTrue(any(w.label=='추가 수집할 확정 공고' for w in app.multiselect))
         collect.assert_not_called()
+
+    def test_load_taxonomy_cache_and_clear_on_save(self):
+        taxonomy.load_taxonomy.cache_clear()
+        rows1 = taxonomy.load_taxonomy()
+        hits_before = taxonomy.load_taxonomy.cache_info().hits
+        self.assertEqual(hits_before, 0)
+
+        # 두 번째 호출 시 캐시 히트 발생 및 동일 객체 반환 확인
+        rows2 = taxonomy.load_taxonomy()
+        self.assertEqual(taxonomy.load_taxonomy.cache_info().hits, 1)
+        self.assertIs(rows1, rows2)
+
+        # save_taxonomy_item 호출 시 캐시가 클리어되는지 확인
+        row = next(r for r in rows1 if r['name'] == '서버')
+        taxonomy.save_taxonomy_item(row['kind'], row['domain'], row['name'], row['aliases'], True, row['id'])
+        self.assertEqual(taxonomy.load_taxonomy.cache_info().currsize, 0)
+
+        # 재호출 시 새로운 캐시가 적재됨
+        rows3 = taxonomy.load_taxonomy()
+        self.assertEqual(taxonomy.load_taxonomy.cache_info().currsize, 1)
+
+    def test_crawler_base_domain_and_subdomain_acceptance(self):
+        # 1. _base_domain 단위 테스트
+        self.assertEqual(crawler._base_domain("file.nonghyupit.com"), "nonghyupit.com")
+        self.assertEqual(crawler._base_domain("www.nonghyupit.com"), "nonghyupit.com")
+        self.assertEqual(crawler._base_domain("nonghyupit.com"), "nonghyupit.com")
+        self.assertEqual(crawler._base_domain("ebid.bank.co.kr"), "bank.co.kr")
+        self.assertEqual(crawler._base_domain("file.ebid.bank.co.kr"), "bank.co.kr")
+        self.assertEqual(crawler._base_domain("192.168.1.1"), "192.168.1.1")
+        self.assertNotEqual(crawler._base_domain("fake-nonghyupit.com"), "nonghyupit.com")
+        self.assertNotEqual(crawler._base_domain("malicious.com"), "nonghyupit.com")
+
+        # 2. 크롤러 첨부파일 다운로드 시 서브도메인 허용 및 제3자 악성 도메인 차단 검증
+        origin = "https://www.nonghyupit.com/bid/view?id=123"
+        item = {'게시물ID': '10', '수집사이트': 'NH농협', '제목': '서버 구축 사업', '원본URL': origin, '번호': '10', '등록일': '2026-10-13', '계열사/조직': 'NH'}
+
+        markup = '''
+        <html>
+        <body>
+            <p>서버 구축 제안요청서</p>
+            <a href="https://file.nonghyupit.com/download/rfp.zip">RFP 다운로드 (서브도메인)</a>
+            <a href="https://malicious.com/attack.zip">악성 첨부파일 (외부 사이트)</a>
+        </body>
+        </html>
+        '''
+
+        mock_response = Mock(status_code=200, headers={}, content=b'PK\x05\x06' + b'\x00'*18)
+        mock_response.iter_content.return_value = [b'PK\x05\x06' + b'\x00'*18]
+
+        requested_urls = []
+        def fake_request(session, method, url, **kwargs):
+            if 'view' in url:
+                return Mock(text=markup)
+            requested_urls.append(url)
+            return mock_response
+
+        with patch.object(crawler, '_request', side_effect=fake_request), \
+             patch.object(crawler, 'handle_download_and_extract_zip'):
+            res = crawler._collect_item(item, self.temp.name, ['인프라'], False, False, selected_solutions=['서버'])
+
+        # 서브도메인은 다운로드 요청이 실행되어야 함
+        self.assertTrue(any('file.nonghyupit.com' in u for u in requested_urls))
+        # 외부 도메인은 다운로드 요청이 차단되어야 함
+        self.assertFalse(any('malicious.com' in u for u in requested_urls))
 
 
 if __name__=='__main__':unittest.main()

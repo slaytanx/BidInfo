@@ -207,15 +207,13 @@ def _extract_facts(text, fields, keywords, configs):
         key = (raw['field'], _flat(fact))
         if key in seen:
             continue
-        seen.add(key)
         item = {'field': raw['field'], 'fact': fact, 'quote': quote, 'verified': False}
-        if _flat(quote) and len(_flat(quote)) >= 4:
-            if _flat(quote) not in flat:
-                continue  # 원문에 없는 인용은 지어낸 사실로 보고 버린다.
-            where = next((f'원문 문자 {s + 1}-{e}' for s, e, t in passages if _flat(quote) in _flat(t)), f'원문 문자 1-{len(text)}')
+        if quote and (quote in text or (len(_flat(quote)) >= 4 and _flat(quote) in flat)):
+            where = next((f'원문 문자 {s + 1}-{e}' for s, e, t in passages if quote in t or _flat(quote) in _flat(t)), f'원문 문자 1-{len(text)}')
             item.update(verified=True, location=where)
         elif quote.strip():
             continue
+        seen.add(key)
         facts.append(item)
     return facts
 

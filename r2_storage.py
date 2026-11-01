@@ -28,14 +28,17 @@ def get_s3_client():
     """Cloudflare R2용 boto3 S3 클라이언트 생성"""
     if os.environ.get("BIDINFO_R2_ENABLED", "0") != "1":
         return None
-    if not R2_ACCESS_KEY_ID or not R2_SECRET_ACCESS_KEY:
+    endpoint_url = os.environ.get("R2_ENDPOINT_URL", R2_ENDPOINT_URL)
+    access_key = os.environ.get("R2_ACCESS_KEY_ID", R2_ACCESS_KEY_ID)
+    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY", R2_SECRET_ACCESS_KEY)
+    if not access_key or not secret_key:
         return None
     
     return boto3.client(
         "s3",
-        endpoint_url=R2_ENDPOINT_URL,
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
         config=Config(signature_version="s3v4")
     )
 
@@ -64,8 +67,9 @@ def download_db_from_r2(local_db_path: str) -> bool:
     if not s3:
         return False
     try:
+        bucket = os.environ.get("R2_BUCKET_NAME", R2_BUCKET_NAME)
         os.makedirs(os.path.dirname(local_db_path), exist_ok=True)
-        s3.download_file(R2_BUCKET_NAME, "bids_history.db", local_db_path)
+        s3.download_file(bucket, "bids_history.db", local_db_path)
         print("📥 [R2 Storage] bids_history.db 성공적으로 최신 동기화 완료!")
         return True
     except Exception as e:
@@ -80,11 +84,12 @@ def upload_db_to_r2(local_db_path: str) -> bool:
     try:
         import sqlite3
         import tempfile
+        bucket = os.environ.get("R2_BUCKET_NAME", R2_BUCKET_NAME)
         with tempfile.TemporaryDirectory(prefix="bid-db-sync-") as folder:
             snapshot = os.path.join(folder, "bids_history.db")
             with sqlite3.connect(local_db_path) as source, sqlite3.connect(snapshot) as target:
                 source.backup(target)
-            s3.upload_file(snapshot, R2_BUCKET_NAME, "bids_history.db")
+            s3.upload_file(snapshot, bucket, "bids_history.db")
         print("📤 [R2 Storage] bids_history.db 스토리지 영구 보관 업로드 완료!")
         return True
     except Exception as e:
@@ -97,7 +102,8 @@ def upload_file_to_r2(local_file_path: str, r2_key: str) -> bool:
     if not s3 or not os.path.exists(local_file_path):
         return False
     try:
-        s3.upload_file(local_file_path, R2_BUCKET_NAME, r2_key)
+        bucket = os.environ.get("R2_BUCKET_NAME", R2_BUCKET_NAME)
+        s3.upload_file(local_file_path, bucket, r2_key)
         print(f"📤 [R2 Storage] 첨부파일 영구 업로드 완료: {r2_key}")
         return True
     except Exception as e:
@@ -110,14 +116,21 @@ def delete_r2_folder(r2_folder_prefix: str) -> bool:
     if not s3:
         return False
     try:
-        if not r2_folder_prefix.endswith("/"):
-            r2_folder_prefix += "/"
-        
-        objects_to_delete = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix=r2_folder_prefix)
-        if "Contents" in objects_to_delete:
-            delete_keys = [{"Key": obj["Key"]} for obj in objects_to_delete["Contents"]]
-            s3.delete_objects(Bucket=R2_BUCKET_NAME, Delete={"Objects": delete_keys})
-            print(f"🗑️ [R2 Storage] 폴더 및 내부 파일 삭제 완료: {r2_folder_prefix}")
+        clean_prefix = (r2_folder_prefix or "").strip("/\\")
+        if not clean_prefix:
+            return False
+        prefix = clean_prefix + "/"
+        bucket = os.environ.get("R2_BUCKET_NAME", R2_BUCKET_NAME)
+        paginator = s3.get_paginator("list_objects_v2")
+        deleted_count = 0
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            contents = page.get("Contents", [])
+            if contents:
+                delete_keys = [{"Key": obj["Key"]} for obj in contents]
+                s3.delete_objects(Bucket=bucket, Delete={"Objects": delete_keys})
+                deleted_count += len(delete_keys)
+        if deleted_count > 0:
+            print(f"🗑️ [R2 Storage] 폴더 및 내부 파일 삭제 완료: {prefix}")
         return True
     except Exception as e:
         print(f"❌ [R2 Storage] 폴더 삭제 실패 ({r2_folder_prefix}): {e}")

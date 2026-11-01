@@ -33,6 +33,15 @@ def extract_org_from_title(title):
     return match.group(1) if match else 'KB국민은행' if '국민' in title else 'NH농협'
 
 
+def _base_domain(host: str) -> str:
+    parts = (host or '').lower().split('.')
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        return (host or '').lower()
+    if len(parts) >= 3 and parts[-2] in ('co', 'or', 'go', 'ne', 're', 'ac') and parts[-1] == 'kr':
+        return '.'.join(parts[-3:])
+    return '.'.join(parts[-2:]) if len(parts) >= 2 else (host or '').lower()
+
+
 def _text(value):
     value = re.sub(r'<(?:script|style)\b[^>]*>.*?</(?:script|style)>', '', value, flags=re.S | re.I)
     return html.unescape(re.sub(r'<[^>]+>', ' ', value)).strip()
@@ -269,8 +278,10 @@ def _collect_item(item, base_dir, selected, local_classifier, force_refresh,
             files = _attachments(markup, origin)
             failures = []
             for method, file_url, payload, name in files:
-                # 게시판과 동일 기관의 공개 다운로드만 허용한다.
-                if urlparse(file_url).hostname != urlparse(origin).hostname:
+                # 게시판과 동일 기관의 공개 다운로드(서브도메인 포함)만 허용한다.
+                f_host = urlparse(file_url).hostname or ''
+                o_host = urlparse(origin).hostname or ''
+                if not f_host or not o_host or _base_domain(f_host) != _base_domain(o_host):
                     failures.append('다른 사이트 첨부: 원본 확인 필요'); continue
                 try:
                     file_response = _request(session, method, file_url, data=payload, stream=True)

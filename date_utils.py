@@ -9,24 +9,21 @@ def extract_date_from_text(text: str) -> date | None:
         return None
     
     # 1. YYYY.MM.DD 또는 YYYY-MM-DD 또는 YYYY/MM/DD
-    match = re.search(r"(\d{4})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})", text)
-    if match:
+    for match in reversed(list(re.finditer(r"(\d{4})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})", text))):
         try:
             return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         except ValueError:
             pass
 
     # 2. YYYY년 MM월 DD일
-    match_kor = re.search(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일", text)
-    if match_kor:
+    for match_kor in reversed(list(re.finditer(r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일", text))):
         try:
             return date(int(match_kor.group(1)), int(match_kor.group(2)), int(match_kor.group(3)))
         except ValueError:
             pass
 
     # 3. YY.MM.DD 또는 YY-MM-DD
-    match_short = re.search(r"(\d{2})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})", text)
-    if match_short:
+    for match_short in reversed(list(re.finditer(r"(\d{2})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})", text))):
         try:
             yr = 2000 + int(match_short.group(1))
             return date(yr, int(match_short.group(2)), int(match_short.group(3)))
@@ -45,12 +42,16 @@ def calculate_d_day(deadline_str: str, target_date: date = None) -> str:
     deadline_date = extract_date_from_text(deadline_str)
     if not deadline_date:
         # MM월 DD일 형식 Fallback 처리
-        match_md = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", deadline_str)
-        if match_md:
+        matches_md = list(re.finditer(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일", deadline_str))
+        if matches_md:
             ref_date = target_date or date.today()
-            try:
-                deadline_date = date(ref_date.year, int(match_md.group(1)), int(match_md.group(2)))
-            except ValueError:
+            for match_md in reversed(matches_md):
+                try:
+                    deadline_date = date(ref_date.year, int(match_md.group(1)), int(match_md.group(2)))
+                    break
+                except ValueError:
+                    pass
+            if not deadline_date:
                 return "상세참조"
         else:
             return "상세참조"

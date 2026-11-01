@@ -1,4 +1,5 @@
 """프로젝트용 분야·세부 항목·업무 분류 사전. 공식 분류를 그대로 대체하지 않는다."""
+import functools
 import hashlib
 import json
 
@@ -124,8 +125,10 @@ def seed_taxonomy(conn):
     entries += [('업무','',name,aliases,[]) for name,aliases in WORK_SEEDS.items()]
     conn.executemany('INSERT OR IGNORE INTO taxonomy(kind,domain,name,aliases,sources) VALUES (?,?,?,?,?)',
                      [(k,d,n,json.dumps(a,ensure_ascii=False),json.dumps(s)) for k,d,n,a,s in entries])
+    load_taxonomy.cache_clear()
 
 
+@functools.lru_cache(maxsize=128)
 def load_taxonomy(enabled_only=True):
     from db import init_db, get_db_connection
     init_db()
@@ -168,3 +171,4 @@ def save_taxonomy_item(kind, domain, name, aliases, enabled=True, item_id=None):
                 (json.dumps(aliases,ensure_ascii=False),int(enabled),item_id,kind,domain,name))
             if not cursor.rowcount: raise ValueError('분류 항목을 찾을 수 없습니다')
         conn.commit()
+    load_taxonomy.cache_clear()
