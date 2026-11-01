@@ -333,6 +333,17 @@ class BudgetAnalysisTests(unittest.TestCase):
             result=analysis.analyze_bid_with_ollama('서버','본문')
         self.assertEqual(result['duration'],'근거 미확인: 6개월')
 
+    def test_failed_fact_group_keeps_chunk_values_and_warns(self):
+        base=dict(analysis.SCHEMA,summary='서버',fit_reason='서버',tags=['인프라'],solution_tags=['서버'],work_tags=['구축'],evidence=[],duration='6개월')
+        def fail_items(prompt,*a,**k):
+            if '항목:' in prompt: raise RuntimeError('timeout')
+            return json.dumps(base,ensure_ascii=False)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(analysis,'CACHE_DIR',Path(tmp)),patch.object(analysis,'generate_llm_response') as call:
+            call.side_effect=fail_items
+            result=analysis.analyze_bid_with_ollama('서버','본문')
+        self.assertEqual((result['analysis_status'],result['duration']),('성공','근거 미확인: 6개월'))
+        self.assertIn('항목 추출',result['cautions'])
+
     def test_passages_pick_keyword_blocks_in_order(self):
         text=''.join(f'일반 문장 {i}\n' for i in range(400))+'제출 마감 2026-11-20\n'+''.join(f'다른 문장 {i}\n' for i in range(400))+'추정가격 5억원\n'
         picked=analysis._passages(text,{'마감':3,'추정':3})

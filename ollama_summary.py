@@ -221,13 +221,16 @@ def _extract_facts(text, fields, keywords, configs):
 
 
 def _apply_facts(result, text, configs):
-    """평가 대상 항목을 항목별 추출 결과로 바꾼다. 한 묶음이 실패하면 그 항목은 구간 분석 값을 그대로 둔다."""
+    """평가 대상 항목을 항목별 추출 결과로 바꾼다. 한 묶음이 실패하면 그 항목은 구간 분석 값을 그대로 두고 건너뛴 묶음 수를 돌려준다."""
+    skipped = 0
     for fields, keywords in FIELD_GROUPS:
         try:
             facts = _extract_facts(text, fields, keywords, configs)
         except Exception:
+            skipped += 1
             continue
         if not facts:  # 묶음 전체가 비면 모델 실패로 보고 구간 분석 값을 지우지 않는다.
+            skipped += 1
             continue
         for field in fields:
             ok = [f['fact'] for f in facts if f['field'] == field and f['verified']]
@@ -235,7 +238,7 @@ def _apply_facts(result, text, configs):
             result[field] = ('; '.join(ok) + (' / ' if ok and no else '') + (UNVERIFIED + '; '.join(no) if no else '')) or '확인 불가'
         result['evidence'] = [e for e in result['evidence'] if e['field'] not in fields] + [
             {'field': f['field'], 'quote': f['quote'], 'location': f['location']} for f in facts if f['verified']]
-    return result
+    return result, skipped
 
 
 def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords='네트워크, 보안', model_name=LOCAL_MODEL, engine_configs=None):
@@ -260,7 +263,9 @@ def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords
                 continue  # 한 구간의 응답 오류로 분석 전체를 버리지 않는다. 전부 실패하면 아래에서 실패 처리.
         if not parts:
             raise RuntimeError('모든 구간 분석 실패')
-        result = _apply_facts(_merge(parts), doc_text, configs)
+        result, skipped = _apply_facts(_merge(parts), doc_text, configs)
+        if skipped:
+            result['cautions'] = f'항목 추출 {skipped}개 묶음 실패 또는 근거 없음: 구간 분석 값 유지, 원문 확인 필요; ' + result['cautions']
         if len(parts) < len(prompts):
             result['cautions'] = f'일부 구간 분석 실패({len(prompts) - len(parts)}/{len(prompts)}): 원문 확인 필요; ' + result['cautions']
         result.update(analysis_status='성공', model=result.get('_model', configs[0].get('model', '')), cache_key=full_key)
