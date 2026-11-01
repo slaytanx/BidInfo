@@ -69,7 +69,7 @@ def should_collect(result, selected, solutions=None, work=None, include_uncertai
     return matches or (include_uncertain and not result.get('certain',False))
 
 
-def classify_local(title,text='',model='gemma4:e4b-mlx'):
+def classify_local(title,text='',model='nemo-bolt:fast'):
     from llm_manager import call_ollama,parse_json
     base=classify_rules(title,text)
     if base['certain']:return base

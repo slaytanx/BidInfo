@@ -8,9 +8,9 @@ import time
 import requests
 
 LOCAL_MODEL = 'gemma4:26b-mlx'
-CLASSIFIER_MODEL = 'gemma4:e4b-mlx'
+CLASSIFIER_MODEL = 'nemo-bolt:fast'
 CLOUD_MODELS = ['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3-flash', 'upstage/solar-pro4']
-LOCAL_MODELS = [LOCAL_MODEL, 'gemma4:12b-mlx', 'qwen3.8:fast', CLASSIFIER_MODEL]
+LOCAL_MODELS = [LOCAL_MODEL, 'nemo-bolt:fast', 'gemma4:12b-mlx', 'qwen3.8:fast']
 _LOCAL_LOCK = threading.Semaphore(1)
 _CLOUD_LOCK = threading.Semaphore(2)
 SECRET_FILE = Path(__file__).parent / '.local_secrets.json'

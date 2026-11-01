@@ -16,9 +16,9 @@
 
 ## 모델과 비용
 
-- 기본: 로컬 `gemma4:e4b-mlx` 분류 → OpenRouter `deepseek/deepseek-v4-flash-0731` 분석.
+- 기본: 로컬 `nemo-bolt:fast` 분류 → OpenRouter `deepseek/deepseek-v4-flash-0731` 분석.
 - 로컬 전용·클라우드 실패 시: `gemma4:26b-mlx`.
-- 비교 후보: `gemma4:12b-mlx`, `qwen3.8:fast`, `z-ai/glm-5.3-flash`, `upstage/solar-pro4`.
+- 비교 후보: `nemo-bolt:fast`, `gemma4:12b-mlx`, `qwen3.8:fast`, `z-ai/glm-5.3-flash`, `upstage/solar-pro4`.
 - 화면에서 처리 방식과 모델을 선택합니다. API 키가 없으면 로컬로 처리합니다.
 - OpenRouter 키는 관리자 연결 설정, `OPENROUTER_API_KEY` 환경변수 또는 로컬 `.env`로 제공합니다. 화면에서 저장한 키는 권한 `0600`의 `.local_secrets.json`에만 보관하며 공고 DB·R2·Git에 포함하지 않습니다.
 - 실행당 기본 예산은 미화 1달러입니다. 현재 모델 가격과 최대 출력량으로 진행 중 호출 비용을 예약합니다. 응답을 받지 못한 호출도 보수적으로 계산하며 예산 부족 시 로컬로 전환합니다. 화면 집계는 앱에서 실행한 텍스트 호출 범위이며 계정 전체의 지출 한도와 다릅니다.
