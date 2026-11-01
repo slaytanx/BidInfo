@@ -54,5 +54,17 @@ class TestDB(unittest.TestCase):
         db.delete_bids(["TEST_001"])
         self.assertFalse(db.is_bid_exists("TEST_001"))
 
+    def test_default_sites_and_source_keys(self):
+        db.init_db()
+        sites = db.load_all_sites()
+        expected = ["KB국민은행", "NH농협 입찰공고", "농협정보시스템", "신한DS 사업공시", "신한은행 새소식", "하나은행 새소식", "하나금융티아이 공지사항"]
+        for s in expected:
+            self.assertIn(s, sites)
+
+        self.assertEqual(db.source_key("신한DS 사업공시", "https://www.shinhands.co.kr/insight/disclosure"), "shinds")
+        self.assertEqual(db.source_key("신한은행 새소식", "https://www.shinhan.com"), "shinhan")
+        self.assertEqual(db.source_key("하나금융티아이 공지사항", "https://www.hanati.co.kr"), "hanati")
+        self.assertEqual(db.source_key("하나은행 새소식", "https://www.kebhana.com"), "hana")
+
 if __name__ == "__main__":
     unittest.main()

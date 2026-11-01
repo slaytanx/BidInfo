@@ -29,8 +29,8 @@ def sanitize_filename(name):
 
 
 def extract_org_from_title(title):
-    match = re.search(r'\((은행|손해|생명|증권|중앙회|공통|유통|자산신탁|KB|국민|농협)\)', title)
-    return match.group(1) if match else 'KB국민은행' if '국민' in title else 'NH농협'
+    match = re.search(r'\((은행|손해|생명|증권|중앙회|공통|유통|자산신탁|KB|국민|농협|신한|하나)\)', title)
+    return match.group(1) if match else 'KB국민은행' if '국민' in title else '신한은행' if '신한' in title else '하나은행' if '하나' in title else 'NH농협'
 
 
 def _base_domain(host: str) -> str:

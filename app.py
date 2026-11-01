@@ -360,8 +360,9 @@ with st.sidebar:
     target_url = st.text_input("수집 대상 URL", value=default_url)
 
     with st.expander("➕ 수집 사이트 신규 저장 / 삭제"):
-        new_site_name = st.text_input("사이트 이름", placeholder="예: KB국민은행")
-        new_site_url = st.text_input("사이트 URL", placeholder="https://omoney.kbstar.com/quics?page=C018592")
+        st.caption("비로그인 공개 게시판(신한DS 사업공시, 하나금융티아이 등)을 신규 등록하거나 삭제할 수 있습니다.")
+        new_site_name = st.text_input("사이트 이름", placeholder="예: 신한DS 사업공시")
+        new_site_url = st.text_input("사이트 URL", placeholder="https://www.shinhands.co.kr/insight/disclosure")
 
         col_s1, col_s2 = st.columns(2)
         with col_s1:

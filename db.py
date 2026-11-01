@@ -38,6 +38,14 @@ def source_key(site='', url=''):
         return 'kb'
     if 'nonghyup.com' in host or '농협' in site:
         return 'nh'
+    if 'shinhands.co.kr' in host or '신한DS' in site:
+        return 'shinds'
+    if 'shinhan.com' in host or '신한' in site:
+        return 'shinhan'
+    if 'hanati.co.kr' in host or '하나금융티아이' in site:
+        return 'hanati'
+    if 'kebhana.com' in host or '하나' in site:
+        return 'hana'
     return hashlib.sha256((host or site or 'unknown').encode()).hexdigest()[:12]
 
 
@@ -73,7 +81,11 @@ def init_db():
         conn.execute('CREATE TABLE IF NOT EXISTS sites (site_name TEXT PRIMARY KEY, site_url TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
         defaults = [('NH농협 입찰공고', 'https://www.nonghyup.com/ecenter/bid/bidList.do'),
                     ('KB국민은행', 'https://omoney.kbstar.com/quics?page=C018592'),
-                    ('농협정보시스템', 'https://www.nonghyupit.com/nonghyupit/4485/subview.do')]
+                    ('농협정보시스템', 'https://www.nonghyupit.com/nonghyupit/4485/subview.do'),
+                    ('신한DS 사업공시', 'https://www.shinhands.co.kr/insight/disclosure'),
+                    ('신한은행 새소식', 'https://www.shinhan.com'),
+                    ('하나은행 새소식', 'https://www.kebhana.com'),
+                    ('하나금융티아이 공지사항', 'https://www.hanati.co.kr')]
         conn.executemany('INSERT OR IGNORE INTO sites(site_name,site_url) VALUES (?,?)', defaults)
         conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         from taxonomy import seed_taxonomy, legacy_classification, DEFAULT_DOMAINS
