@@ -11,3 +11,4 @@ scratch/
 .local_secrets.json
 graphify-out/
 .streamlit/secrets.toml
+.agents/teamwork/

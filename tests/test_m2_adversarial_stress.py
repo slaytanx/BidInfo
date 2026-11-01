@@ -324,6 +324,55 @@ class AdversarialConcurrencyBudgetStressTests(unittest.TestCase):
         self.assertEqual(budget.spent, Decimal('0.02'))
 
 
+class RunBudgetEnhancementTests(unittest.TestCase):
+    """Verify RunBudget.reserve_context, fallback pricing, and flexible budget configuration."""
+
+    def test_reserve_context_success_settles_actual_cost(self):
+        budget = llm.RunBudget(1)
+        with budget.reserve_context(Decimal('0.05')) as alloc:
+            alloc['cost'] = Decimal('0.015')
+        self.assertEqual(budget.reserved, Decimal('0'))
+        self.assertEqual(budget.spent, Decimal('0.015'))
+        self.assertEqual(budget.calls, 1)
+
+    def test_reserve_context_exception_settles_conservative_reserve(self):
+        budget = llm.RunBudget(1)
+        with self.assertRaises(RuntimeError):
+            with budget.reserve_context(Decimal('0.05')) as alloc:
+                raise RuntimeError('Simulated network cut')
+        self.assertEqual(budget.reserved, Decimal('0'))
+        self.assertEqual(budget.spent, Decimal('0.05'))
+
+    def test_reserve_context_budget_exceeded_leaves_state_clean(self):
+        budget = llm.RunBudget(limit=Decimal('0.03'))
+        with self.assertRaises(llm.BudgetExceeded):
+            with budget.reserve_context(Decimal('0.05')):
+                pass
+        self.assertEqual(budget.reserved, Decimal('0'))
+        self.assertEqual(budget.spent, Decimal('0'))
+        self.assertEqual(budget.calls, 0)
+
+    def test_fallback_pricing_on_openrouter_network_error(self):
+        budget = llm.RunBudget(1)
+        with patch.object(llm.requests, 'get', side_effect=requests.exceptions.ConnectTimeout('OpenRouter API down')):
+            prices = budget.price('deepseek/deepseek-v4-flash-0731')
+        expected = llm.KNOWN_MODEL_PRICES['deepseek/deepseek-v4-flash-0731']
+        self.assertEqual(prices, expected)
+
+    def test_unknown_model_on_network_error_raises_llm_error(self):
+        budget = llm.RunBudget(1)
+        with patch.object(llm.requests, 'get', side_effect=requests.exceptions.ConnectTimeout('OpenRouter API down')):
+            with self.assertRaises(llm.LLMError) as ctx:
+                budget.price('non-existent/custom-model')
+        self.assertIn('현재 모델 목록에서 모델/가격 확인 불가', str(ctx.exception))
+
+    def test_engine_configs_numeric_budget_coercion(self):
+        configs = llm.engine_configs(mode='혼합', budget=2.5)
+        cloud_conf = next(c for c in configs if c['provider'] == 'OpenRouter')
+        self.assertIsInstance(cloud_conf['budget'], llm.RunBudget)
+        self.assertEqual(cloud_conf['budget'].limit, Decimal('2.5'))
+
+
 class AdversarialExceptionPreservationStressTests(unittest.TestCase):
     """Stress-test exception message preservation in generate_llm_response across various engines."""
 

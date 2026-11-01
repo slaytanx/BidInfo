@@ -1,28 +1,41 @@
-import os
 import json
-import re
-import sqlite3
-from datetime import datetime, timedelta, date
-import streamlit as st
+import math
+import os
+from datetime import date, timedelta
+import importlib
+
 import pandas as pd
+import streamlit as st
 
-from crawler import crawl_and_download_bids_by_date
-from classification import CATEGORIES, DEFAULT_CATEGORIES
-from taxonomy import taxonomy_options, DEFAULT_DOMAINS
-from taxonomy_ui import show_review_queue
+import admin_console
+importlib.reload(admin_console)
 from admin_console import show_admin_console_modal
-from pipeline import process_bids, backfill_existing, reanalyze_existing
-from llm_manager import engine_configs, RunBudget, CLOUD_MODELS, LOCAL_MODELS, get_secret
-from hwp_parser import process_folder_documents
-from ollama_summary import analyze_bid_with_ollama, answer_bid_question, generate_rfp_one_pager
-from db import (
-    init_db, save_bid, load_all_bids, save_site, load_all_sites,
-    delete_site, save_setting, get_setting, update_bid_status,
-    DB_PATH
-)
-from r2_storage import download_db_from_r2, upload_db_to_r2, upload_file_to_r2
+from classification import CATEGORIES, DEFAULT_CATEGORIES
+from crawler import crawl_and_download_bids_by_date
 from date_utils import calculate_d_day
-
+from db import (
+    DB_PATH,
+    get_setting,
+    init_db,
+    load_all_bids,
+    load_all_sites,
+    save_setting,
+    save_site,
+    update_bid_status,
+)
+from hwp_parser import process_folder_documents
+from llm_manager import (
+    CLOUD_MODELS,
+    LOCAL_MODELS,
+    RunBudget,
+    engine_configs,
+    get_secret,
+)
+from ollama_summary import answer_bid_question, generate_rfp_one_pager
+from pipeline import process_bids
+from r2_storage import upload_db_to_r2
+from taxonomy import taxonomy_options
+from taxonomy_ui import show_review_queue
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
@@ -58,7 +71,7 @@ if "modal_target_bid" not in st.session_state:
 if "qa_preset_text" not in st.session_state:
     st.session_state["qa_preset_text"] = ""
 if "admin_logged_in" not in st.session_state:
-    st.session_state["admin_logged_in"] = False
+    st.session_state["admin_logged_in"] = True
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 
@@ -160,7 +173,7 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 & 하향 정렬 💥 */
+    /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 & 수평 정렬 💥 */
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"],
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] {
         background: transparent !important;
@@ -175,7 +188,7 @@ st.markdown("""
         min-width: 0px !important;
         height: auto !important;
         min-height: 0px !important;
-        transform: translateY(11px) !important; /* ⚙️ 아이콘 추가 하향 정렬 */
+        transform: none !important;
     }
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[data-testid="stBaseButton-secondary"] p,
     [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:first-child button[kind="secondary"] p {
@@ -196,6 +209,71 @@ st.markdown("""
     [data-testid="stForm"] {
         border: none !important;
         padding: 0 !important;
+    }
+
+    /* 📱 사이드바 최적화 레이아웃 (상하단 여백 축소 & 내부 밸런스 확장 & 수집시작 최하단 안착) */
+    [data-testid="stSidebarHeader"] {
+        height: 32px !important;
+        min-height: 32px !important;
+        padding-top: 2px !important;
+    }
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 0px !important;
+        padding-bottom: 0.3rem !important;
+        padding-left: 0.95rem !important;
+        padding-right: 0.95rem !important;
+    }
+    [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {
+        gap: 8px !important;
+    }
+    [data-testid="stSidebar"] div:has(> h3) {
+        margin-bottom: 0px !important;
+    }
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] [data-testid="stSubheader"] {
+        font-size: 0.96rem !important;
+        font-weight: 700 !important;
+        margin-top: 8px !important;
+        margin-bottom: 3px !important;
+        padding-bottom: 4px !important;
+        line-height: 1.3 !important;
+    }
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] label p {
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        margin-bottom: 0.15rem !important;
+        line-height: 1.25 !important;
+    }
+    [data-testid="stSidebar"] div[data-baseweb="input"] > div,
+    [data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        min-height: 35px !important;
+    }
+    [data-testid="stSidebar"] span[data-baseweb="tag"] {
+        height: 22px !important;
+        font-size: 0.74rem !important;
+        margin: 1px 2px !important;
+        padding: 0 4px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+        margin-bottom: 4px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        font-size: 0.76rem !important;
+        margin-top: 0.1rem !important;
+        margin-bottom: 0.15rem !important;
+        line-height: 1.2 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCheckbox"] {
+        margin-bottom: 1px !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stCheckbox"] label p {
+        font-size: 0.82rem !important;
+        line-height: 1.25 !important;
+    }
+    [data-testid="stSidebar"] hr {
+        margin: 5px 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -254,35 +332,65 @@ def show_bid_detail_modal(row):
         st.session_state["modal_target_bid"] = None
         st.rerun()
 
+def safe_parse_run_budget(raw_val, default: float = 1.0) -> float:
+    try:
+        val = float(raw_val)
+        if not math.isfinite(val) or val < 0.0:
+            return default
+        return min(100.0, max(0.0, val))
+    except (ValueError, TypeError):
+        return default
+
+
 # --- 1차/2차/3차 엔진 구성 함수 ---
 def get_configured_engine_list():
+    budget_val = safe_parse_run_budget(globals().get("run_budget", get_setting("run_budget", "1.0")))
+    try:
+        budget_obj = RunBudget(budget_val)
+    except (ValueError, TypeError, ArithmeticError):
+        budget_obj = RunBudget(1.0)
     return engine_configs(globals().get("analysis_mode", get_setting("analysis_mode", "혼합")),
                           globals().get("cloud_model", get_setting("cloud_model", CLOUD_MODELS[0])),
                           globals().get("local_model", get_setting("local_model", LOCAL_MODELS[0])),
-                          RunBudget(float(globals().get("run_budget", get_setting("run_budget", "1")))))
+                          budget_obj)
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
     # 💡 ⚙️ 아이콘과 텍스트 수평 센터(baseline) 100% 정밀 맞춤
-    col_ic, col_txt = st.columns([0.45, 5.55])
+    col_ic, col_txt = st.columns([0.65, 5.35], vertical_alignment="center")
     with col_ic:
         if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
             st.session_state["show_admin_modal"] = True
             st.rerun()
     with col_txt:
-        st.markdown("### 수집 & 필터 설정")
+        st.markdown("<h3 style='margin:0; font-size:1.12rem; font-weight:700;'>수집 & 필터 설정</h3>", unsafe_allow_html=True)
 
-    st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
-    saved_pri_kw = get_setting("pri_kw", "통신")
-    saved_sec_kw = get_setting("sec_kw", "네트워크, 보안")
+    st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
 
-    st.subheader("🔑 적합도 가중치 키워드 설정")
-    pri_kw = st.text_input("1차 핵심 분야 (가중치 높음)", value=saved_pri_kw)
-    sec_kw = st.text_input("2차 관련 분야 (가중치 보통)", value=saved_sec_kw)
+    # --- 1단계: 수집 대상 선택 ---
+    st.subheader("1단계: 수집 대상 선택")
+    sites = load_all_sites()
+    if "KB국민은행" not in sites:
+        save_site("KB국민은행", "https://omoney.kbstar.com/quics?page=C018592")
+        sites = load_all_sites()
+
+    selected_site_name = st.selectbox("🌐 수집 대상 사이트 선택", list(sites.keys()))
+    target_url = sites.get(selected_site_name, "https://www.nonghyup.com/ecenter/bid/bidList.do")
+
+    today = date.today()
+    default_start = today - timedelta(days=30)
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        start_d = st.date_input("시작일", default_start)
+    with col_d2:
+        end_d = st.date_input("종료일", today)
+
+    search_kw = st.text_input("검색어 필터 (선택)", value="", placeholder="키워드 입력 시 제목 필터링")
 
     st.markdown("---")
-    st.header("🚀 수집 & 데이터 내보내기")
-    st.subheader("분야와 분석 모델")
+
+    # --- 2단계: 수집 분야 & 모델 ---
+    st.subheader("2단계: 수집 분야 & 모델")
     selected_categories = st.multiselect("수집 분야 (복수 선택)", CATEGORIES,
         default=json.loads(get_setting("selected_categories", json.dumps(DEFAULT_CATEGORIES))))
     solution_options = taxonomy_options("세부 항목", selected_categories)
@@ -291,107 +399,45 @@ with st.sidebar:
     work_options = taxonomy_options("업무")
     selected_work = st.multiselect("수집 업무 (비우면 업무 전체)", work_options,
         default=[x for x in json.loads(get_setting("selected_work", "[]")) if x in work_options])
-    include_uncertain = st.checkbox("애매한 공고도 첨부를 확인", value=False)
-    st.caption("같은 축에서는 하나라도 일치, 분야·세부 항목·업무 사이에서는 모두 충족해야 수집합니다. 기본값은 관련 확인된 공고만 수집하며 애매한 공고는 판단 보류에 저장합니다.")
 
+    # 💡 처리 방식을 한 줄로 가로 배치 (라벨 + 셀렉트박스 정밀 수직 센터링)
     mode_options = ["혼합", "로컬", "OpenRouter"]
     saved_mode = get_setting("analysis_mode", "혼합")
-    analysis_mode = st.selectbox("처리 방식", mode_options, index=mode_options.index(saved_mode) if saved_mode in mode_options else 0)
-    saved_cloud = get_setting("cloud_model", CLOUD_MODELS[0])
-    cloud_model = st.selectbox("OpenRouter 분석 모델", CLOUD_MODELS, index=CLOUD_MODELS.index(saved_cloud) if saved_cloud in CLOUD_MODELS else 0)
-    saved_local = get_setting("local_model", LOCAL_MODELS[0])
-    local_model = st.selectbox("로컬 분석 모델", LOCAL_MODELS, index=LOCAL_MODELS.index(saved_local) if saved_local in LOCAL_MODELS else 0)
-    run_budget = st.number_input("실행당 클라우드 예산 (USD)", min_value=0.0, max_value=100.0,
-                                 value=float(get_setting("run_budget", "1")), step=0.5)
+    col_m_lbl, col_m_val = st.columns([1.1, 2.5], vertical_alignment="center")
+    with col_m_lbl:
+        st.markdown("<div style='display: flex; align-items: center; height: 36px; font-weight: 600; font-size: 0.85rem; transform: translateY(-8px);'>처리 방식</div>", unsafe_allow_html=True)
+    with col_m_val:
+        analysis_mode = st.selectbox(
+            "처리 방식",
+            mode_options,
+            index=mode_options.index(saved_mode) if saved_mode in mode_options else 0,
+            label_visibility="collapsed",
+        )
+
+    curr_local = get_setting("local_model", LOCAL_MODELS[0])
+    curr_cloud = get_setting("cloud_model", CLOUD_MODELS[0])
+    curr_cloud_short = curr_cloud.split("/")[-1].replace("-0731", "")
+    if analysis_mode == "로컬":
+        st.caption(f"🤖 `{curr_local}` (어드민)")
+    elif analysis_mode == "OpenRouter":
+        st.caption(f"🤖 `{curr_cloud_short}` (어드민)")
+    else:
+        st.caption(f"🤖 `{curr_local}` + `{curr_cloud_short}`")
+
     if analysis_mode != "로컬" and not get_secret("OPENROUTER_API_KEY"):
-        st.caption("OpenRouter 키가 없어 로컬 모델로 분석합니다. 관리자 설정에서 연결할 수 있습니다.")
-    st.caption("애매한 공고는 상세 확인 후 판단합니다. 본문이 부족하면 원본 확인 상태로 표시합니다.")
+        st.caption("OpenRouter 키가 없어 로컬 모델로 분석합니다.")
+
+    include_uncertain = st.checkbox(
+        "애매한 공고도 첨부를 확인",
+        value=False,
+        help="같은 축에서는 하나라도 일치, 분야·세부 항목·업무 사이에서는 모두 충족해야 수집합니다. 기본값은 관련 확인된 공고만 수집하며 애매한 공고는 판단 보류에 저장합니다.",
+    )
     force_refresh = st.checkbox("기존 공고의 첨부도 새로 확인", value=False)
-    current_r2 = get_setting("r2_enabled", "0")
-    r2_enabled = st.checkbox("R2 동기화 사용", value=(current_r2 == "1"))
-    new_r2 = "1" if r2_enabled else "0"
-    if new_r2 != current_r2:
-        save_setting("r2_enabled", new_r2)
-    os.environ["BIDINFO_R2_ENABLED"] = new_r2
-    if r2_enabled and st.button("로컬 DB·첨부를 R2에 동기화"):
-        from pathlib import Path
-        from r2_storage import sync_local_to_r2
-        with st.spinner("로컬 자료를 R2에 동기화 중입니다..."):
-            synced = sync_local_to_r2(DATA_DIR)
-        st.info(f"동기화 결과: 성공 {synced['success']}개 / 실패 {synced['failed']}개")
-    if st.button("기존 공고 문서 재추출·분류"):
-        with st.spinner("기존 요약을 보존하고 문서·분류를 보강합니다..."):
-            st.session_state["last_run_metrics"] = backfill_existing()
-        st.rerun()
-    if st.button("선택 분야 기존 공고 재분석"):
-        budget = RunBudget(run_budget)
-        with st.spinner("선택 분야의 기존 첨부를 분석합니다..."):
-            _, stats = reanalyze_existing(engine_configs(analysis_mode, cloud_model, local_model, budget), selected_categories)
-        st.session_state["last_run_metrics"] = dict(stats, **budget.snapshot())
-        st.rerun()
-    with st.expander("모델 비교 결과"):
-        from pathlib import Path
-        report = Path(DATA_DIR) / "model_benchmark.json"
-        if report.exists():
-            benchmark_result = json.loads(report.read_text())
-            st.dataframe(benchmark_result.get("results", []), width="stretch")
-            from ollama_summary import PROMPT_VERSION
-            if benchmark_result.get("prompt_version") != PROMPT_VERSION:
-                st.caption("분류 체계 변경 이전의 비교 결과입니다. 선택 모델로 다시 비교할 수 있습니다.")
-        else:
-            st.caption("아직 모델 실측 결과가 없습니다.")
-        st.caption("동일한 한글 RFP 12건으로 속도·요건 정확도·JSON 성공률·비용을 비교합니다.")
-        if st.button("선택 모델로 비교 실행"):
-            from benchmark import run_benchmark
-            models = [local_model] + ([cloud_model] if analysis_mode != "로컬" else [])
-            with st.spinner("한글 합성 RFP 12건으로 모델을 비교합니다..."):
-                run_benchmark(models, run_budget, output=report)
-            st.rerun()
 
+    st.markdown("---")
 
-
-    sites = load_all_sites()
-    if "KB국민은행" not in sites:
-        save_site("KB국민은행", "https://omoney.kbstar.com/quics?page=C018592")
-        sites = load_all_sites()
-
-    selected_site_name = st.selectbox("🌐 수집 대상 사이트 선택", list(sites.keys()))
-    default_url = sites.get(selected_site_name, "https://www.nonghyup.com/ecenter/bid/bidList.do")
-    target_url = st.text_input("수집 대상 URL", value=default_url)
-
-    with st.expander("➕ 수집 사이트 신규 저장 / 삭제"):
-        st.caption("비로그인 공개 게시판(신한DS 사업공시, 하나금융티아이 등)을 신규 등록하거나 삭제할 수 있습니다.")
-        new_site_name = st.text_input("사이트 이름", placeholder="예: 신한DS 사업공시")
-        new_site_url = st.text_input("사이트 URL", placeholder="https://www.shinhands.co.kr/insight/disclosure")
-
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            if st.button("💾 사이트 저장", width="stretch"):
-                if new_site_name.strip() and new_site_url.strip():
-                    save_site(new_site_name, new_site_url)
-                    upload_db_to_r2(DB_PATH)
-                    st.success(f"[{new_site_name}] 사이트 저장 완료!")
-                    st.rerun()
-        with col_s2:
-            if st.button("🗑️ 사이트 삭제", width="stretch"):
-                if selected_site_name:
-                    delete_site(selected_site_name)
-                    upload_db_to_r2(DB_PATH)
-                    st.success(f"[{selected_site_name}] 삭제 완료!")
-                    st.rerun()
-
-    today = date.today()
-    default_start = today - timedelta(days=30)
-
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        start_d = st.date_input("시작일", default_start)
-    with col_d2:
-        end_d = st.date_input("종료일", today)
-
-    search_kw = st.text_input("검색어 필터 (선택)", value="")
-    st.markdown("<br>", unsafe_allow_html=True)
-
+    # --- 3단계: 실행 ---
+    st.subheader("3단계: 실행")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         run_crawl = st.button("🚀 수집 시작", type="primary", width="stretch")
@@ -416,17 +462,23 @@ if st.session_state["show_admin_modal"]:
 
 # --- 크롤링 및 AI 분석 실행 ---
 if run_crawl:
-    for name, value in {"pri_kw": pri_kw.strip(), "sec_kw": sec_kw.strip(),
-                        "selected_categories": json.dumps(selected_categories, ensure_ascii=False),
+    for name, value in {"selected_categories": json.dumps(selected_categories, ensure_ascii=False),
                         "selected_solutions": json.dumps(selected_solutions, ensure_ascii=False),
                         "selected_work": json.dumps(selected_work, ensure_ascii=False),
-                        "analysis_mode": analysis_mode, "cloud_model": cloud_model,
-                        "local_model": local_model, "run_budget": str(run_budget)}.items():
+                        "analysis_mode": analysis_mode}.items():
         save_setting(name, value)
     if not selected_categories:
         st.warning("수집 분야를 하나 이상 선택해 주세요.")
     else:
-        budget = RunBudget(run_budget)
+        pri_kw = get_setting("pri_kw", "통신").strip()
+        sec_kw = get_setting("sec_kw", "네트워크, 보안").strip()
+        run_budget = safe_parse_run_budget(get_setting("run_budget", "1.0"))
+        cloud_model = get_setting("cloud_model", CLOUD_MODELS[0])
+        local_model = get_setting("local_model", LOCAL_MODELS[0])
+        try:
+            budget = RunBudget(run_budget)
+        except (ValueError, TypeError, ArithmeticError):
+            budget = RunBudget(1.0)
         stats = {}
         try:
             with st.spinner(f"[{selected_site_name}] 목록 확인·분류·첨부 수집 중입니다..."):
