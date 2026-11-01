@@ -500,9 +500,22 @@ if run_crawl:
         except (ValueError, RuntimeError) as error:
             st.error(str(error))
 
-if "last_run_metrics" in st.session_state:
-    st.info("최근 실행 결과")
-    st.json(st.session_state["last_run_metrics"])
+if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_run_metrics"], dict):
+    m = st.session_state["last_run_metrics"]
+    coll = m.get("collected", 0)
+    try:
+        spent = float(m.get("spent_or_reserved_usd", 0.0) or 0.0)
+    except (ValueError, TypeError):
+        spent = 0.0
+    succ = m.get("success", 0)
+    with st.expander(f"📊 최근 수집·분석 결과 (수집 {coll}건 · 분석 성공 {succ}건 · 비용 ${spent:.4f})", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("확인 공고", f"{m.get('listed', 0)}건")
+        c2.metric("수집 대상", f"{coll}건", f"첨부 {m.get('downloaded_files', 0)}개")
+        c3.metric("분석 성공", f"{succ}건", f"보류 {m.get('pending_review', 0)}건")
+        c4.metric("사용 예산", f"${spent:.4f}", f"호출 {m.get('cloud_calls', 0)}회")
+        st.caption("상세 통계 로그 (JSON):")
+        st.json(m)
 
 # --- 메인 데이터 뷰 및 탭 ---
 bids_data = load_all_bids()

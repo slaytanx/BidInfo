@@ -245,6 +245,17 @@ class ClassificationCrawlerTests(unittest.TestCase):
         files=crawler._attachments(kb,'https://omoney.kbstar.com/detail')
         self.assertEqual(files[0][2]['_FILE_NAME'],'rfp.hwp')
 
+    def test_http_filename_latin1_korean_decode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            folder = Path(tmpdir)
+            korean_str = '[KB국민은행]_Oracle社_공고.pdf'
+            mojibake = korean_str.encode('utf-8').decode('latin1')
+            response = Mock(headers={'Content-Disposition': f'attachment; filename="{mojibake}"'})
+            response.iter_content.return_value = [b'%PDF-1.5 dummy content']
+            saved = Path(crawler.handle_download_and_extract_zip(response, folder, 'default.pdf'))
+            self.assertEqual(saved.name, korean_str)
+            self.assertTrue(saved.exists())
+
 
 class BudgetAnalysisTests(unittest.TestCase):
     def test_parallel_reservation_and_unknown_charge(self):

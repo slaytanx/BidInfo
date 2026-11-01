@@ -183,10 +183,23 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
     return found
 
 
+def decode_http_filename(name):
+    """HTTP 헤더 등에서 Latin-1로 오역된 한글(UTF-8/CP949) 파일명을 정상 복원."""
+    if not name:
+        return name
+    for enc in ('utf-8', 'cp949'):
+        try:
+            return name.encode('latin1').decode(enc)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return name
+
+
 def handle_download_and_extract_zip(response, item_folder_path, default_name):
     disposition = response.headers.get('Content-Disposition', '')
     match = re.search(r"filename\*=UTF-8''([^;]+)", disposition, re.I) or re.search(r'filename=["\x27]?([^"\x27;]+)', disposition, re.I)
-    name = unquote(match.group(1)).strip() if match else default_name
+    raw_name = unquote(match.group(1)).strip() if match else (unquote(default_name).strip() if default_name else '')
+    name = decode_http_filename(raw_name)
     path = Path(item_folder_path) / sanitize_filename(name)
     part = path.with_name(path.name + '.part')
     total = 0
