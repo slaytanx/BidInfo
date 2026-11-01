@@ -5,7 +5,7 @@ import streamlit as st
 
 from taxonomy_ui import show_taxonomy_editor
 from llm_manager import get_secret, save_secrets
-from db import load_all_bids, delete_bids, reset_all_bids, save_setting, DB_PATH
+from db import load_all_bids, delete_bids, reset_all_bids, DB_PATH
 from r2_storage import delete_r2_folder, upload_db_to_r2
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -60,11 +60,8 @@ def show_admin_console_modal(expected_password):
         st.caption("API 키는 로컬 비밀 파일에 저장하며 공고 DB와 R2에는 포함하지 않습니다.")
         with st.form("model_credentials"):
             openrouter_key = st.text_input("OpenRouter API 키", type="password", value=get_secret("OPENROUTER_API_KEY"))
-            new_admin_pass = st.text_input("관리자 비밀번호 변경", type="password")
             if st.form_submit_button("연결 설정 저장"):
                 save_secrets({"OPENROUTER_API_KEY": openrouter_key})
-                if new_admin_pass.strip():
-                    save_setting("admin_password", new_admin_pass.strip())
                 st.success("로컬 연결 설정을 저장했습니다.")
         st.markdown("---")
 

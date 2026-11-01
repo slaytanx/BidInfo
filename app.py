@@ -46,7 +46,7 @@ except BaseException:
     admin_pass_secret = None
 
 def get_admin_password():
-    return admin_pass_secret or get_setting("admin_password", "")
+    return admin_pass_secret or ""
 
 # 💡 R2 스토리지에서 최신 bids_history.db 영구 데이터 다운로드 동기화
 init_db()
