@@ -71,7 +71,7 @@ if "modal_target_bid" not in st.session_state:
 if "qa_preset_text" not in st.session_state:
     st.session_state["qa_preset_text"] = ""
 if "admin_logged_in" not in st.session_state:
-    st.session_state["admin_logged_in"] = True
+    st.session_state["admin_logged_in"] = False
 if "show_admin_modal" not in st.session_state:
     st.session_state["show_admin_modal"] = False
 

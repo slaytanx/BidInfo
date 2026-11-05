@@ -354,8 +354,22 @@ def render_taxonomy_and_clean_tab():
 def show_admin_console_modal(expected_password=None):
     st.caption("시스템 관리자 모달: 모델 연결, 수집 사이트, R2 백업, 데이터 재처리, 분류 체계 및 데이터 관리를 제공합니다.")
 
-    if "admin_logged_in" not in st.session_state:
-        st.session_state["admin_logged_in"] = True
+    if not st.session_state.get("admin_logged_in"):
+        # 비밀번호 미설정 시 열지 않음(fail-closed)
+        if not expected_password:
+            st.error("관리자 비밀번호(ADMIN_PASSWORD)가 설정되지 않아 콘솔을 열 수 없습니다.")
+        else:
+            with st.form("admin_login_form"):
+                entered = st.text_input("관리자 비밀번호", type="password")
+                if st.form_submit_button("로그인", type="primary"):
+                    if login_allowed(expected_password, entered):
+                        st.session_state["admin_logged_in"] = True
+                        st.rerun()
+                    st.error("비밀번호가 올바르지 않습니다.")
+        if st.button("닫기", key="admin_login_close_btn"):
+            st.session_state["show_admin_modal"] = False
+            st.rerun()
+        return
 
     tab_model, tab_sites, tab_maint, tab_taxonomy = st.tabs([
         "🤖 AI 모델 연결 & 예산",

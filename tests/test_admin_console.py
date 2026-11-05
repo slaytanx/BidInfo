@@ -131,6 +131,42 @@ class AdminConsoleTabsAndPersistenceTests(unittest.TestCase):
         self.assertEqual(db.get_setting("run_budget"), "3.5")
         self.assertEqual(db.get_setting("r2_enabled"), "1")
 
+    def test_admin_console_locked_without_login(self):
+        from streamlit.testing.v1 import AppTest
+
+        script = """
+import streamlit as st
+from admin_console import show_admin_console_modal
+
+show_admin_console_modal("pw1")
+"""
+        app = AppTest.from_string(script).run(timeout=30)
+        self.assertFalse(app.exception)
+        self.assertEqual(len(app.tabs), 0)
+
+        app.text_input[0].set_value("wrong")
+        app.button[0].click().run()
+        self.assertEqual(len(app.tabs), 0)
+        self.assertTrue(app.error)
+
+        app.text_input[0].set_value("pw1")
+        app.button[0].click().run()
+        self.assertGreater(len(app.tabs), 0)
+
+    def test_admin_console_closed_when_password_unset(self):
+        from streamlit.testing.v1 import AppTest
+
+        script = """
+import streamlit as st
+from admin_console import show_admin_console_modal
+
+show_admin_console_modal("")
+"""
+        app = AppTest.from_string(script).run(timeout=30)
+        self.assertEqual(len(app.tabs), 0)
+        self.assertEqual(len(app.text_input), 0)
+        self.assertTrue(app.error)
+
     def test_admin_console_tabs_structure(self):
         from streamlit.testing.v1 import AppTest
 
