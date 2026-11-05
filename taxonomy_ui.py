@@ -2,6 +2,7 @@
 import json
 import streamlit as st
 from taxonomy import DOMAINS, DEFAULT_DOMAINS, SOURCES, load_taxonomy, taxonomy_options, save_taxonomy_item
+from ui_errors import show_error
 from db import load_all_bids, set_manual_classification
 from pipeline import process_confirmed
 
@@ -80,4 +81,4 @@ def show_review_queue(base_dir,engines):
                 result=process_confirmed(selected_ids,base_dir,engines,lambda n,t,r:progress.progress(n/t))
             st.session_state['last_confirmed_result']=result
             st.rerun()
-        except (ValueError,RuntimeError) as error:st.error(str(error))
+        except Exception as error:show_error(error)

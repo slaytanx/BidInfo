@@ -33,6 +33,7 @@ from pipeline import process_bids
 from r2_storage import upload_db_to_r2
 from taxonomy import taxonomy_options
 from taxonomy_ui import show_review_queue
+from ui_errors import show_error
 
 st.set_page_config(page_title="입찰 통합 분석 & 제안 파이프라인", layout="wide")
 
@@ -77,9 +78,9 @@ def prepared_bids(stamp, today_key):
     if not bids:
         return pd.DataFrame(), {}
     frame = pd.DataFrame(bids)
-    frame['fit_score'] = pd.to_numeric(frame['fit_score'], errors='coerce').fillna(0).astype(int)
-    frame['summary'] = frame['summary'].fillna('미분석: 분류 확정 후 첨부를 수집해 주세요')
-    frame['fit_reason'] = frame['fit_reason'].fillna('아직 분석하지 않음')
+    frame['fit_score'] = pd.to_numeric(frame['fit_score'], errors='coerce').astype('Int64')  # 비어 있으면 미분석
+    frame['summary'] = frame['summary'].fillna('미분석')
+    frame['fit_reason'] = frame['fit_reason'].fillna('미분석')
     for column, source in (("분야", "tags"), ("세부 항목", "solution_tags"), ("업무", "work_tags")):
         frame[column] = frame[source].apply(lambda value: ", ".join(json.loads(value or "[]")))
     frame["D-Day"] = frame["deadline"].apply(calculate_d_day)
@@ -87,6 +88,10 @@ def prepared_bids(stamp, today_key):
     tag_lists = frame["tags"].apply(lambda value: json.loads(value or "[]"))
     counts = {tag: int(tag_lists.apply(lambda tags: tag in tags).sum()) for tag in CATEGORIES}
     return frame, counts
+
+
+def score_text(value):
+    return "미분석" if pd.isna(value) else f"{int(value)}점"
 
 
 def deadline_style(value):
@@ -327,7 +332,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # 💡 공고 상세 리포트 팝업 모달창
-@st.dialog("📄 입찰 공고 상세 리포트", width="large")
+@st.dialog("입찰 공고 상세 리포트", width="large")
 def show_bid_detail_modal(row):
     star_mark = "⭐ 관심공고 찜" if row["starred"] == 1 else "☆ 일반공고"
     st.markdown(f"### {row['title']}")
@@ -335,7 +340,7 @@ def show_bid_detail_modal(row):
 
     origin_link_url = row.get("origin_url", "") or row.get("url", "")
     if origin_link_url:
-        st.link_button("🌐 실제 원본 공고 게시글로 이동 (새 창)", origin_link_url, width="stretch")
+        st.link_button("실제 원본 공고 게시글로 이동 (새 창)", origin_link_url, width="stretch")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -343,10 +348,10 @@ def show_bid_detail_modal(row):
     with col2:
         st.metric("D-Day 마감", row["D-Day"])
     with col3:
-        st.metric("AI 적합도 점수", f"{row['fit_score']}점")
+        st.metric("AI 적합도 점수", score_text(row['fit_score']))
 
     st.markdown("---")
-    st.markdown("#### 🎯 AI 적합 사유")
+    st.markdown("#### AI 적합 사유")
     st.info(row["fit_reason"])
 
     st.caption("분야: " + ", ".join(json.loads(row.get("tags", "[]") or "[]")))
@@ -357,18 +362,18 @@ def show_bid_detail_modal(row):
     with st.expander("문서 추출 상세·분석 근거"):
         st.json(json.loads(row.get("extraction_details", "{}") or "{}"))
         st.json(json.loads(row.get("evidence", "[]") or "[]"))
-    st.markdown("#### 💡 AI 사업 요약")
+    st.markdown("#### AI 사업 요약")
     st.write(row["summary"])
 
     st.markdown("---")
-    st.markdown("#### 📋 제출 및 서류 체크리스트")
+    st.markdown("#### 제출 및 서류 체크리스트")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"⏰ **제출 마감일시**: `{row.get('deadline', '상세참조')}`")
-        st.markdown(f"📨 **제출 방식**: `{row.get('submit_type', '상세참조')}`")
+        st.markdown(f"**제출 방식**: `{row.get('submit_type', '상세참조')}`")
     with c2:
-        st.markdown(f"📜 **필수 제출 서류**: `{row.get('required_docs', '상세참조')}`")
-        st.markdown(f"✅ **참가 자격 요건**: `{row.get('qualifications', '상세참조')}`")
+        st.markdown(f"**필수 제출 서류**: `{row.get('required_docs', '상세참조')}`")
+        st.markdown(f"**참가 자격 요건**: `{row.get('qualifications', '상세참조')}`")
 
     if st.button("닫기", type="primary", width="stretch"):
         st.session_state["modal_target_bid"] = None
@@ -401,7 +406,7 @@ with st.sidebar:
     # 💡 ⚙️ 아이콘과 텍스트 수평 센터(baseline) 100% 정밀 맞춤
     col_ic, col_txt = st.columns([0.65, 5.35], vertical_alignment="center")
     with col_ic:
-        if st.button("⚙️", help="🔒 관리자 어드민 콘솔 열기"):
+        if st.button("⚙️", help="관리자 어드민 콘솔 열기"):
             st.session_state["show_admin_modal"] = True
             st.rerun()
     with col_txt:
@@ -416,7 +421,7 @@ with st.sidebar:
         save_site("KB국민은행", "https://omoney.kbstar.com/quics?page=C018592")
         sites = load_all_sites()
 
-    selected_site_name = st.selectbox("🌐 수집 대상 사이트 선택", list(sites.keys()))
+    selected_site_name = st.selectbox("수집 대상 사이트 선택", list(sites.keys()))
     target_url = sites.get(selected_site_name, "https://www.nonghyup.com/ecenter/bid/bidList.do")
 
     today = date.today()
@@ -460,11 +465,11 @@ with st.sidebar:
     curr_cloud = get_setting("cloud_model", CLOUD_MODELS[0])
     curr_cloud_short = curr_cloud.split("/")[-1].replace("-0731", "")
     if analysis_mode == "로컬":
-        st.caption(f"🤖 `{curr_local}` (어드민)")
+        st.caption(f"`{curr_local}` (어드민)")
     elif analysis_mode == "OpenRouter":
-        st.caption(f"🤖 `{curr_cloud_short}` (어드민)")
+        st.caption(f"`{curr_cloud_short}` (어드민)")
     else:
-        st.caption(f"🤖 `{curr_local}` + `{curr_cloud_short}`")
+        st.caption(f"`{curr_local}` + `{curr_cloud_short}`")
 
     if analysis_mode != "로컬" and not get_secret("OPENROUTER_API_KEY"):
         st.caption("OpenRouter 키가 없어 로컬 모델로 분석합니다.")
@@ -482,19 +487,19 @@ with st.sidebar:
     st.subheader("3단계: 실행")
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        run_crawl = st.button("🚀 수집 시작", type="primary", width="stretch")
+        run_crawl = st.button("수집 시작", type="primary", width="stretch")
     with col_b2:
         if cached_bids(db_stamp()):
             csv_export = cached_csv(db_stamp())
             st.download_button(
-                label="📥 CSV 다운",
+                label="CSV 다운",
                 data=csv_export,
                 file_name=f"bid_export_{today}.csv",
                 mime="text/csv",
                 width="stretch"
             )
         else:
-            st.button("📥 CSV 다운", disabled=True, width="stretch")
+            st.button("CSV 다운", disabled=True, width="stretch")
 
 # 💡 세션 상태에 따라 시크릿 어드민 모달 호출
 if st.session_state["show_admin_modal"]:
@@ -537,8 +542,8 @@ if run_crawl:
             stats.update(budget.snapshot())
             st.session_state["last_run_metrics"] = stats
             st.rerun()
-        except (ValueError, RuntimeError) as error:
-            st.error(str(error))
+        except Exception as error:  # UI 경계: 원인별 안내로 바꿔 보여 준다
+            show_error(error)
 
 if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_run_metrics"], dict):
     m = st.session_state["last_run_metrics"]
@@ -548,7 +553,7 @@ if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_
     except (ValueError, TypeError):
         spent = 0.0
     succ = m.get("success", 0)
-    with st.expander(f"📊 최근 수집·분석 결과 (수집 {coll}건 · 분석 성공 {succ}건 · 비용 ${spent:.4f})", expanded=False):
+    with st.expander(f"최근 수집·분석 결과 (수집 {coll}건 · 분석 성공 {succ}건 · 비용 ${spent:.4f})", expanded=False):
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("확인 공고", f"{m.get('listed', 0)}건")
         c2.metric("수집 대상", f"{coll}건", f"첨부 {m.get('downloaded_files', 0)}개")
@@ -559,7 +564,7 @@ if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_
 
 # --- 메인 데이터 뷰 및 탭 ---
 if st.session_state.get("flash_toast"):
-    st.toast(st.session_state.pop("flash_toast"), icon="✅")
+    st.toast(st.session_state.pop("flash_toast"))
 
 df, tag_counts = prepared_bids(db_stamp(), str(date.today()))
 
@@ -575,7 +580,7 @@ col_f1, col_f2, col_f3, col_f4 = st.columns([1.3, 1.4, 2.0, 1.5], vertical_align
 
 with col_f1:
     unique_sites = ["전체 사이트"] + (sorted(list(df["site_name"].unique())) if not df.empty else [])
-    selected_site_filter = st.selectbox("🌐 수집 사이트 선택", options=unique_sites, key="f_site")
+    selected_site_filter = st.selectbox("수집 사이트 선택", options=unique_sites, key="f_site")
 with col_f2:
     min_score = st.slider("최저 적합도 점수", 0, 100, 0, step=10, key="f_score")
 with col_f3:
@@ -606,7 +611,7 @@ if not filtered_df.empty:
     if selected_site_filter != "전체 사이트":
         filtered_df = filtered_df[filtered_df["site_name"] == selected_site_filter]
     if min_score > 0:
-        filtered_df = filtered_df[filtered_df["fit_score"] >= min_score]
+        filtered_df = filtered_df[filtered_df["fit_score"].fillna(-1) >= min_score]
     if filter_title:
         filtered_df = filtered_df[filtered_df["title"].str.contains(filter_title, case=False, na=False)]
     if only_starred:
@@ -615,7 +620,7 @@ if not filtered_df.empty:
     filtered_df["num_int"] = pd.to_numeric(filtered_df["num"], errors='coerce').fillna(0)
     filtered_df = filtered_df.sort_values(by=["reg_date", "num_int"], ascending=[False, False])
 
-col_cnt, col_reset = st.columns([5, 1], vertical_alignment="center")
+col_cnt, col_reset = st.columns([3, 1.4], vertical_alignment="center")
 col_cnt.caption(f"{len(filtered_df)} / {len(df)}건 표시")
 col_reset.button("필터 초기화", on_click=reset_filters, width="stretch")
 
@@ -626,20 +631,34 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "분류 검토",
 ])
 
+selected_bid_id = None  # 표에서 선택한 공고. 진행 상태 편집과 Q&A 탭이 공유한다.
+
+
+def render_empty_state(key):
+    if df.empty:
+        st.info("아직 수집한 공고가 없습니다. 사이드바에서 수집 조건을 고르고 [수집 시작]을 눌러 주세요.")
+    else:
+        st.info(f"필터 조건에 맞는 공고가 없습니다. (전체 {len(df)}건)")
+        st.button("필터 초기화", on_click=reset_filters, key=key)
+
+
 # TAB 1: 대시보드 표
 with tab1:
-    st.subheader("📋 전체 수집 공고 목록")
+    st.subheader("전체 수집 공고 목록")
     if filtered_df.empty:
-        st.info("💡 사이드바에서 [🚀 수집 시작] 버튼을 누르거나 필터 조건을 변경해 주세요.")
+        render_empty_state("reset_empty_tab1")
     else:
         disp_df = filtered_df[["num", "starred_symbol", "status", "D-Day", "site_name", "org", "title", "origin_url", "reg_date", "fit_score", "fit_reason", "summary", "분야", "세부 항목", "업무", "classification_status", "extraction_status", "analysis_status", "analysis_model"]].copy()
         disp_df.columns = ["번호", "찜", "진행상태", "D-Day", "수집사이트", "계열사", "제목", "원본글", "등록일", "적합도", "적합사유", "사업요약", "분야", "세부 항목", "업무", "분류 상태", "문서 상태", "분석 상태", "분석 모델"]
         disp_df.index = range(1, len(disp_df) + 1)
 
-        st.dataframe(
+        table_event = st.dataframe(
             disp_df.style.map(deadline_style, subset=["D-Day"]),
             width="stretch",
             height=425,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="bid_table",
             column_order=["제목", "분야", "세부 항목", "업무", "분류 상태", "문서 상태", "분석 상태", "D-Day", "수집사이트", "찜", "진행상태", "적합도", "사업요약", "원본글", "계열사", "번호", "등록일", "적합사유", "분석 모델"],
             column_config={
                 "분야": st.column_config.TextColumn("분야", width=160),
@@ -652,42 +671,39 @@ with tab1:
                 "수집사이트": st.column_config.TextColumn("수집사이트", alignment="center", width=140),
                 "계열사": st.column_config.TextColumn("계열사", alignment="center", width=75),
                 "제목": st.column_config.TextColumn("제목", alignment="left", width=420),
-                "원본글": st.column_config.LinkColumn("원본글", display_text="🔗 바로가기", width=95),
+                "원본글": st.column_config.LinkColumn("원본글", display_text="바로가기", width=95),
                 "등록일": st.column_config.TextColumn("등록일", alignment="center", width=95),
-                "적합도": st.column_config.ProgressColumn("적합도", format="%d점", min_value=0, max_value=100, width=85),
+                "적합도": st.column_config.ProgressColumn("적합도", format="%d점", min_value=0, max_value=100, width=85, help="비어 있으면 아직 분석하지 않은 공고입니다."),
                 "적합사유": st.column_config.TextColumn("적합사유", alignment="left", width=200),
                 "사업요약": st.column_config.TextColumn("사업요약", alignment="left", width=350)
             }
         )
 
-        st.markdown("---")
-        st.subheader("⚙️ 제안 진행 상태(Pipeline) & 상세 리포트 팝업")
+        if table_event.selection.rows:
+            selected_bid_id = filtered_df.iloc[table_event.selection.rows[0]]["bid_id"]
 
-        if not filtered_df.empty:
-            col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns([0.35, 4.5, 1.4, 1.35, 1.4], vertical_alignment="bottom")
-            with col_p2:
-                target_bid_labels = [f"[{row['starred_symbol']}] [{row['num']}] [{row['org']}] {row['title']} ({row['reg_date']}) · {row['bid_id']}" for _, row in filtered_df.iterrows()]
-                target_bid_label = st.selectbox(
-                    "상태 변경 및 상세 리포트 팝업 공고 선택",
-                    options=target_bid_labels,
-                    key="pipeline_select"
-                )
-                selected_index = list(target_bid_labels).index(target_bid_label)
-                selected_row = filtered_df.iloc[selected_index]
+        st.markdown("---")
+        st.subheader("⚙️ 제안 진행 상태 & 상세 리포트")
+        if selected_bid_id is None:
+            st.caption("표에서 공고 행을 선택하면 진행 상태를 바꾸거나 상세 리포트를 볼 수 있습니다. 선택한 공고는 서류 Q&A 탭에도 이어집니다.")
+        else:
+            selected_row = filtered_df[filtered_df["bid_id"] == selected_bid_id].iloc[0]
+            st.markdown(f"**선택한 공고**: [{selected_row['org']}] {selected_row['title']} ({selected_row['reg_date']})")
+            col_p1, col_p3, col_p4, col_p5 = st.columns([0.8, 1.6, 1.3, 1.5], vertical_alignment="bottom")
             with col_p1:
                 is_star = st.checkbox("⭐", value=bool(selected_row["starred"]), key="star_" + selected_row["bid_id"])
             with col_p3:
                 status_options = ["검토중", "제안작성중", "제출완료", "낙찰", "포기"]
                 curr_idx = status_options.index(selected_row["status"]) if selected_row["status"] in status_options else 0
-                new_status = st.selectbox("진행상태", status_options, index=curr_idx)
+                new_status = st.selectbox("진행상태", status_options, index=curr_idx, key="status_" + selected_row["bid_id"])
             with col_p4:
-                if st.button("💾 상태 저장", type="primary", width="stretch"):
+                if st.button("상태 저장", type="primary", width="stretch"):
                     update_bid_status(selected_row["bid_id"], new_status, 1 if is_star else 0)
                     upload_db_to_r2(DB_PATH)
                     st.session_state["flash_toast"] = f"[{selected_row['title'][:15]}...] 상태 업데이트 완료!"
                     st.rerun()
             with col_p5:
-                if st.button("🔍 팝업 상세보기", width="stretch"):
+                if st.button("팝업 상세보기", width="stretch"):
                     st.session_state["modal_target_bid"] = selected_row.to_dict()
                     st.rerun()
 
@@ -696,41 +712,41 @@ with tab1:
 
 # TAB 2: 핵심 체크리스트 & RFP 1장 요약
 with tab2:
-    st.subheader("📋 입찰 서류 체크리스트 & 📄 RFP 1장 요약 리포트")
+    st.subheader("입찰 서류 체크리스트 & RFP 1장 요약 리포트")
     if filtered_df.empty:
-        st.warning("필터 조건에 일치하는 공고가 없습니다.")
+        render_empty_state("reset_empty_tab2")
     else:
         engine_list = get_configured_engine_list()
         page_limit = st.session_state.get("tab2_limit", 30)
         for _, row in filtered_df.head(page_limit).iterrows():
             star_mark = "⭐ " if row['starred'] == 1 else ""
-            expander_title = f"{star_mark}[{row['status']}] [{row['D-Day']}] [{row['org']}] {row['title']} (적합도: {row['fit_score']}점)"
+            expander_title = f"{star_mark}[{row['status']}] [{row['D-Day']}] [{row['org']}] {row['title']} (적합도: {score_text(row['fit_score'])})"
 
-            with st.expander(expander_title, expanded=True if row['fit_score']>=70 else False):
+            with st.expander(expander_title, expanded=bool(pd.notna(row['fit_score']) and row['fit_score'] >= 70)):
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown(f"⏰ **제출 마감일시**: `{row.get('deadline', '상세 서류 참조')}` ({row['D-Day']})")
-                    st.markdown(f"📨 **제출 방식**: `{row.get('submit_type', '전자/방문')}`")
+                    st.markdown(f"**제출 방식**: `{row.get('submit_type', '전자/방문')}`")
                 with col2:
-                    st.markdown(f"📜 **필수 제출 서류**: `{row.get('required_docs', '제안서 등')}`")
-                    st.markdown(f"✅ **핵심 자격 요건**: `{row.get('qualifications', '상세 서류 참조')}`")
+                    st.markdown(f"**필수 제출 서류**: `{row.get('required_docs', '제안서 등')}`")
+                    st.markdown(f"**핵심 자격 요건**: `{row.get('qualifications', '상세 서류 참조')}`")
 
                 orig_link = row.get("origin_url", "")
                 if orig_link:
-                    st.markdown(f"🔗 **원본 공고 게시글 링크**: [{row['title']}]({orig_link})")
+                    st.markdown(f"**원본 공고 게시글 링크**: [{row['title']}]({orig_link})")
 
-                st.markdown(f"💡 **AI 사업 요약**: {row['summary']}")
-                st.markdown(f"🎯 **적합 사유**: {row['fit_reason']}")
+                st.markdown(f"**AI 사업 요약**: {row['summary']}")
+                st.markdown(f"**적합 사유**: {row['fit_reason']}")
 
                 st.markdown("---")
                 rfp_state_key = f"rfp_report_{row['bid_id']}"
                 rfp_btn_key = f"rfp_btn_{row['bid_id']}"
-                if st.button(f"📄 [{row['title'][:20]}...] RFP 1장 요약 리포트 생성", key=rfp_btn_key):
+                if st.button(f"[{row['title'][:20]}...] RFP 1장 요약 리포트 생성", key=rfp_btn_key):
                     with st.spinner("첨부 서류를 분석하여 RFP 1장 요약 리포트를 생성 중입니다..."):
                         doc_text = process_folder_documents(row["folder_path"])
                         st.session_state[rfp_state_key] = generate_rfp_one_pager(row["title"], doc_text, engine_configs=engine_list)
                 if rfp_state_key in st.session_state:
-                    st.markdown("#### 📄 RFP 1장 요약 리포트:")
+                    st.markdown("#### RFP 1장 요약 리포트:")
                     st.info(st.session_state[rfp_state_key])
         if len(filtered_df) > page_limit:
             st.caption(f"{page_limit} / {len(filtered_df)}건 표시 중")
@@ -740,19 +756,20 @@ with tab2:
 
 # TAB 3: AI 서류 Q&A
 with tab3:
-    st.subheader("🤖 입찰 첨부 서류 기반 AI 대화")
+    st.subheader("입찰 첨부 서류 기반 AI 대화")
     if filtered_df.empty:
-        st.warning("필터 조건에 일치하는 공고가 없습니다.")
+        render_empty_state("reset_empty_tab3")
     else:
         engine_list = get_configured_engine_list()
         bid_options = {b["bid_id"]: b for _, b in filtered_df.iterrows()}
         selected_id = st.selectbox(
             "질문할 입찰 공고 선택", list(bid_options.keys()),
-            format_func=lambda bid_id: f"[{bid_options[bid_id]['org']}] {bid_options[bid_id]['title']} ({bid_options[bid_id]['reg_date']}) - {bid_options[bid_id]['fit_score']}점",
+            index=list(bid_options).index(selected_bid_id) if selected_bid_id in bid_options else 0,
+            format_func=lambda bid_id: f"[{bid_options[bid_id]['org']}] {bid_options[bid_id]['title']} ({bid_options[bid_id]['reg_date']}) - {score_text(bid_options[bid_id]['fit_score'])}",
         )
         selected_bid = bid_options[selected_id]
 
-        st.info(f"📌 **선택된 공고**: {selected_bid['title']}\n\n💡 **AI 요약**: {selected_bid['summary']}")
+        st.info(f"**선택된 공고**: {selected_bid['title']}\n\n**AI 요약**: {selected_bid['summary']}")
 
         folder_path = selected_bid["folder_path"]
         doc_text = ""
@@ -763,14 +780,14 @@ with tab3:
             doc_text = saved_document[1]
 
         if doc_text and doc_text.strip():
-            st.success(f"📄 서류 텍스트 읽기 완료! (총 {len(doc_text)}자 추출됨)")
+            st.success(f"서류 텍스트 읽기 완료! (총 {len(doc_text)}자 추출됨)")
         else:
             st.caption("문서를 읽은 뒤 질문할 수 있습니다. 추출에 실패하면 원본을 확인해 주세요.")
 
         st.markdown("---")
         col_q1, col_q2, col_q3 = st.columns(3)
         with col_q1:
-            if st.button("📌 필수 제출 서류 목록이 뭐야?"):
+            if st.button("필수 제출 서류 목록이 뭐야?"):
                 st.session_state["qa_preset_text"] = "이 사업의 필수 제출 서류 목록과 입찰 참가 자격 요건을 알려줘."
                 st.rerun()
         with col_q2:
@@ -778,13 +795,13 @@ with tab3:
                 st.session_state["qa_preset_text"] = "입찰 서류 제출 마감 일시와 개찰 장소를 알려줘."
                 st.rerun()
         with col_q3:
-            if st.button("💰 사업 예산 및 수행 기간은?"):
+            if st.button("사업 예산 및 수행 기간은?"):
                 st.session_state["qa_preset_text"] = "이 사업의 예상 예산(사업비) 및 수행 기간은 얼마인가요?"
                 st.rerun()
 
         user_question = st.text_input("질문을 입력하세요:", value=st.session_state["qa_preset_text"])
 
-        if st.button("🚀 AI 질문 전송", type="primary"):
+        if st.button("AI 질문 전송", type="primary"):
             if not user_question.strip():
                 st.warning("질문 내용을 입력해주세요.")
             else:
@@ -798,7 +815,7 @@ with tab3:
                         question=user_question,
                         engine_configs=engine_list
                     )
-                    st.markdown("### 🤖 AI 답변:")
+                    st.markdown("### AI 답변:")
                     st.write(answer)
 
 with tab4:

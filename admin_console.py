@@ -62,8 +62,8 @@ def get_bid_r2_folder_key(folder_p: str) -> str:
 
 
 def render_model_and_budget_tab():
-    """[탭 1] 🤖 AI 모델 연결 & 예산 (Model & Budget)"""
-    st.markdown("### 🧠 기본 분석 모델 설정 (Ollama & OpenRouter)")
+    """[탭 1] AI 모델 연결 & 예산 (Model & Budget)"""
+    st.markdown("### 기본 분석 모델 설정 (Ollama & OpenRouter)")
     st.caption("수집된 공고의 상세 요약 및 질의응답에 사용할 AI 모델을 설정합니다.")
     with st.form("admin_model_selection_form"):
         col_m1, col_m2 = st.columns(2)
@@ -91,7 +91,7 @@ def render_model_and_budget_tab():
             st.success(f"로컬 모델 [{local_model_val}], 클라우드 모델 [{cloud_model_val}] 설정이 저장되었습니다.")
 
     st.markdown("---")
-    st.markdown("### 🤖 OpenRouter API 키 연결")
+    st.markdown("### OpenRouter API 키 연결")
     st.caption("API 키는 로컬 비밀 파일에 저장하며 공고 DB와 R2에는 포함하지 않습니다.")
     with st.form("admin_model_credentials"):
         openrouter_key = st.text_input(
@@ -105,7 +105,7 @@ def render_model_and_budget_tab():
             st.success("로컬 연결 설정을 저장했습니다.")
 
     st.markdown("---")
-    st.markdown("### 💰 실행당 클라우드 예산 설정")
+    st.markdown("### 실행당 클라우드 예산 설정")
     st.caption("수집 및 분석 실행 1회당 허용할 최대 클라우드 API 지출 한도를 설정합니다.")
     with st.form("admin_budget_form"):
         current_budget = get_safe_run_budget(default=1.0, min_val=0.0, max_val=100.0)
@@ -122,7 +122,7 @@ def render_model_and_budget_tab():
             st.success(f"실행당 클라우드 예산이 {budget_val:.1f} USD로 저장되었습니다.")
 
     st.markdown("---")
-    st.markdown("### 🔑 적합도 평가 가중치 키워드 설정")
+    st.markdown("### 적합도 평가 가중치 키워드 설정")
     st.caption("AI 모델이 사업 공고의 관련성을 평가할 때 가중치를 부여할 키워드를 설정합니다.")
     with st.form("admin_keywords_form"):
         saved_pri_kw = get_setting("pri_kw", "통신")
@@ -136,8 +136,8 @@ def render_model_and_budget_tab():
 
 
 def render_sites_and_r2_tab():
-    """[탭 2] 🌐 수집 사이트 & Cloudflare R2 백업 (Sites & R2)"""
-    st.markdown("### 🌐 수집 대상 사이트 관리")
+    """[탭 2] 수집 사이트 & Cloudflare R2 백업 (Sites & R2)"""
+    st.markdown("### 수집 대상 사이트 관리")
     st.caption("등록된 수집 사이트 목록을 조회하고, 신규 사이트를 등록하거나 기존 사이트를 삭제합니다.")
 
     sites = load_all_sites()
@@ -145,14 +145,14 @@ def render_sites_and_r2_tab():
         save_site("KB국민은행", "https://omoney.kbstar.com/quics?page=C018592")
         sites = load_all_sites()
 
-    st.markdown("#### 📋 현재 등록된 사이트 목록")
+    st.markdown("#### 현재 등록된 사이트 목록")
     if sites:
         sites_df = pd.DataFrame([{"사이트 이름": k, "URL": v} for k, v in sites.items()])
         st.dataframe(sites_df, width="stretch", hide_index=True)
     else:
         st.info("현재 등록된 사이트가 없습니다.")
 
-    st.markdown("#### ➕ 수집 사이트 신규 저장 / 삭제")
+    st.markdown("#### 수집 사이트 신규 저장 / 삭제")
     st.caption("비로그인 공개 게시판(신한DS 사업공시, 하나금융티아이 등)을 신규 등록하거나 삭제할 수 있습니다.")
 
     # 1행: 사이트 신규 등록 (이름, URL, 등록 버튼)
@@ -162,7 +162,7 @@ def render_sites_and_r2_tab():
     with col_r2:
         new_site_url = st.text_input("사이트 URL", placeholder="https://www.shinhands.co.kr/insight/disclosure", key="admin_new_site_url")
     with col_r3:
-        if st.button("💾 사이트 등록", width="stretch", key="admin_save_site_btn"):
+        if st.button("사이트 등록", width="stretch", key="admin_save_site_btn"):
             if new_site_name.strip() and new_site_url.strip():
                 save_site(new_site_name.strip(), new_site_url.strip())
                 upload_db_to_r2(DB_PATH)
@@ -185,7 +185,7 @@ def render_sites_and_r2_tab():
             key="admin_site_to_delete",
         )
     with col_d3:
-        if st.button("🗑️ 사이트 삭제", width="stretch", key="admin_delete_site_btn", disabled=not bool(sites)):
+        if st.button("사이트 삭제", width="stretch", key="admin_delete_site_btn", disabled=not bool(sites)):
             if site_to_delete:
                 delete_site(site_to_delete)
                 upload_db_to_r2(DB_PATH)
@@ -193,7 +193,7 @@ def render_sites_and_r2_tab():
                 st.rerun()
 
     st.markdown("---")
-    st.markdown("### ☁️ Cloudflare R2 스토리지 동기화")
+    st.markdown("### Cloudflare R2 스토리지 동기화")
     st.caption("로컬 SQLite DB와 첨부파일을 Cloudflare R2 오브젝트 스토리지에 백업 및 동기화합니다.")
     current_r2 = get_setting("r2_enabled", "0")
     r2_enabled = st.checkbox("R2 동기화 사용", value=(current_r2 == "1"), key="admin_r2_enabled")
@@ -209,8 +209,8 @@ def render_sites_and_r2_tab():
 
 
 def render_maintenance_and_benchmark_tab():
-    """[탭 3] 🛠️ 데이터 재처리 & 벤치마크 (Maintenance & Benchmark)"""
-    st.markdown("### 🔄 데이터 재추출 및 재분석")
+    """[탭 3] 데이터 재처리 & 벤치마크 (Maintenance & Benchmark)"""
+    st.markdown("### 데이터 재추출 및 재분석")
     st.caption("기존에 수집된 공고 문서를 재추출하거나, 특정 분야 공고를 최신 모델로 재분석합니다.")
 
     if st.button("기존 공고 문서 재추출·분류", width="stretch", key="admin_backfill_btn"):
@@ -248,7 +248,7 @@ def render_maintenance_and_benchmark_tab():
             st.rerun()
 
     st.markdown("---")
-    st.markdown("### 📊 모델 비교 벤치마크")
+    st.markdown("### 모델 비교 벤치마크")
     with st.expander("모델 비교 결과", expanded=True):
         report = Path(DATA_DIR) / "model_benchmark.json"
         if report.exists():
@@ -286,11 +286,11 @@ def render_maintenance_and_benchmark_tab():
 
 
 def render_taxonomy_and_clean_tab():
-    """[탭 4] 🏷️ 분류 사전 & 공고 삭제 센터 (Taxonomy & Clean)"""
+    """[탭 4] 분류 사전 & 공고 삭제 센터 (Taxonomy & Clean)"""
     show_taxonomy_editor()
 
     st.markdown("---")
-    st.markdown("### 🗑️ 불필요 데이터 & 첨부파일 통합 삭제 센터")
+    st.markdown("### 불필요 데이터 & 첨부파일 통합 삭제 센터")
     st.caption("선택한 공고를 DB에서 제거하고, 컴퓨터 로컬 폴더 및 Cloudflare R2 스토리지 내부 파일까지 한 번에 깨끗이 지웁니다.")
 
     flash = st.session_state.pop("admin_flash", None)
@@ -303,7 +303,7 @@ def render_taxonomy_and_clean_tab():
     else:
         bid_map = {f"[{b['num']}] [{b['org']}] {b['title']} ({b['reg_date']})": b for b in all_bids_for_admin}
         selected_del_labels = st.multiselect(
-            "🗑️ 삭제할 공고 목록 선택 (다중 선택 가능)",
+            "삭제할 공고 목록 선택 (다중 선택 가능)",
             options=list(bid_map.keys()),
             key="admin_del_bids_select",
         )
@@ -313,7 +313,7 @@ def render_taxonomy_and_clean_tab():
             key="admin_del_confirm",
             disabled=not selected_del_labels,
         )
-        if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", width="stretch",
+        if st.button("선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", width="stretch",
                      key="admin_del_selected_btn", disabled=not (selected_del_labels and confirm_del)):
             del_ids, failed = delete_bid_items([bid_map[label] for label in selected_del_labels])
             st.session_state["admin_flash"] = (
@@ -323,10 +323,10 @@ def render_taxonomy_and_clean_tab():
             st.session_state["admin_del_confirm"] = False
             st.rerun()
 
-        with st.expander("💣 [주의] 전체 공고 및 파일 클린 포맷"):
-            st.warning("⚠️ 저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
+        with st.expander("[주의] 전체 공고 및 파일 클린 포맷"):
+            st.warning("저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
             typed = st.text_input("계속하려면 '초기화'를 입력하세요.", key="admin_reset_confirm_text")
-            if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행", key="admin_reset_all_btn",
+            if st.button("전체 공고 데이터 & 파일 클린 포맷 실행", key="admin_reset_all_btn",
                          disabled=typed.strip() != "초기화"):
                 reset_all_bids()
                 if os.path.exists(DATA_DIR):
@@ -384,10 +384,10 @@ def show_admin_console_modal(expected_password=None):
         return
 
     tab_model, tab_sites, tab_maint, tab_taxonomy = st.tabs([
-        "🤖 AI 모델 연결 & 예산",
-        "🌐 수집 사이트 & Cloudflare R2 백업",
-        "🛠️ 데이터 재처리 & 벤치마크",
-        "🏷️ 분류 사전 & 공고 삭제 센터",
+        "AI 모델 연결 & 예산",
+        "수집 사이트 & Cloudflare R2 백업",
+        "데이터 재처리 & 벤치마크",
+        "분류 사전 & 공고 삭제 센터",
     ])
 
     with tab_model:

@@ -428,7 +428,11 @@ class PageTests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertEqual(len(app.dataframe[0].value), 1)
             self.assertEqual(app.dataframe[0].value.iloc[0]['제목'], '서버 유지보수')
-            next(b for b in app.button if b.label == '🔍 팝업 상세보기').click()
+            self.assertFalse([b for b in app.button if b.label == '팝업 상세보기'])  # 행을 고르기 전에는 편집 UI가 없다
+            app.session_state['bid_table'] = {'selection': {'rows': [0], 'columns': []}}
+            app.run(timeout=20)
+            self.assertFalse(app.exception)
+            next(b for b in app.button if b.label == '팝업 상세보기').click()
             app.run(timeout=20)
             self.assertFalse(app.exception)
 

@@ -73,14 +73,14 @@ class SidebarWorkflowTests(unittest.TestCase):
         self.assertIn("3단계: 실행", subheaders)
 
         # 2. Verify absence of admin headers in sidebar
-        self.assertNotIn("🔑 적합도 가중치 키워드 설정", subheaders)
+        self.assertNotIn("적합도 가중치 키워드 설정", subheaders)
 
         # 3. Verify step 1 widgets
         sidebar_selectboxes = [w.label for w in app.sidebar.selectbox]
         sidebar_text_inputs = [w.label for w in app.sidebar.text_input]
         sidebar_dates = [w.label for w in app.sidebar.date_input]
 
-        self.assertIn("🌐 수집 대상 사이트 선택", sidebar_selectboxes)
+        self.assertIn("수집 대상 사이트 선택", sidebar_selectboxes)
         self.assertNotIn("수집 대상 URL", sidebar_text_inputs)
         self.assertIn("시작일", sidebar_dates)
         self.assertIn("종료일", sidebar_dates)
@@ -99,7 +99,7 @@ class SidebarWorkflowTests(unittest.TestCase):
 
         # 5. Verify step 3 widgets
         sidebar_buttons = [w.label for w in app.sidebar.button]
-        self.assertIn("🚀 수집 시작", sidebar_buttons)
+        self.assertIn("수집 시작", sidebar_buttons)
 
         # 6. Verify absence of the 6 removed admin widgets
         self.assertNotIn("1차 핵심 분야 (가중치 높음)", sidebar_text_inputs)
@@ -113,8 +113,8 @@ class SidebarWorkflowTests(unittest.TestCase):
         self.assertNotIn("선택 모델로 비교 실행", sidebar_buttons)
         self.assertNotIn("사이트 이름", sidebar_text_inputs)
         self.assertNotIn("사이트 URL", sidebar_text_inputs)
-        self.assertNotIn("💾 사이트 저장", sidebar_buttons)
-        self.assertNotIn("🗑️ 사이트 삭제", sidebar_buttons)
+        self.assertNotIn("사이트 저장", sidebar_buttons)
+        self.assertNotIn("사이트 삭제", sidebar_buttons)
 
 
 class AdminConsoleTabsAndPersistenceTests(unittest.TestCase):
@@ -195,10 +195,10 @@ show_admin_console_modal("dummy_pw")
         self.assertFalse(app.exception)
 
         tab_labels = [t.label for t in app.tabs]
-        self.assertIn("🤖 AI 모델 연결 & 예산", tab_labels)
-        self.assertIn("🌐 수집 사이트 & Cloudflare R2 백업", tab_labels)
-        self.assertIn("🛠️ 데이터 재처리 & 벤치마크", tab_labels)
-        self.assertIn("🏷️ 분류 사전 & 공고 삭제 센터", tab_labels)
+        self.assertIn("AI 모델 연결 & 예산", tab_labels)
+        self.assertIn("수집 사이트 & Cloudflare R2 백업", tab_labels)
+        self.assertIn("데이터 재처리 & 벤치마크", tab_labels)
+        self.assertIn("분류 사전 & 공고 삭제 센터", tab_labels)
 
 
 class RunCrawlSettingsRetrievalTests(unittest.TestCase):
@@ -222,7 +222,7 @@ class RunCrawlSettingsRetrievalTests(unittest.TestCase):
             self.assertFalse(app.exception)
 
             # Trigger crawl
-            crawl_btn = next(b for b in app.sidebar.button if b.label == "🚀 수집 시작")
+            crawl_btn = next(b for b in app.sidebar.button if b.label == "수집 시작")
             crawl_btn.click()
             app.run(timeout=30)
             self.assertFalse(app.exception)
@@ -295,7 +295,7 @@ class AppRunBudgetBoundaryTests(unittest.TestCase):
                     app = AppTest.from_file(app_path).run(timeout=30)
                     self.assertFalse(app.exception)
 
-                    crawl_btn = next((b for b in app.sidebar.button if b.label == "🚀 수집 시작"), None)
+                    crawl_btn = next((b for b in app.sidebar.button if b.label == "수집 시작"), None)
                     self.assertIsNotNone(crawl_btn)
                     crawl_btn.click()
                     app.run(timeout=30)
