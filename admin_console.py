@@ -293,6 +293,10 @@ def render_taxonomy_and_clean_tab():
     st.markdown("### 🗑️ 불필요 데이터 & 첨부파일 통합 삭제 센터")
     st.caption("선택한 공고를 DB에서 제거하고, 컴퓨터 로컬 폴더 및 Cloudflare R2 스토리지 내부 파일까지 한 번에 깨끗이 지웁니다.")
 
+    flash = st.session_state.pop("admin_flash", None)
+    if flash:
+        st.success(flash)
+
     all_bids_for_admin = load_all_bids()
     if not all_bids_for_admin:
         st.info("현재 저장된 공고 데이터가 없습니다.")
@@ -304,39 +308,26 @@ def render_taxonomy_and_clean_tab():
             key="admin_del_bids_select",
         )
 
-        col_del1, _col_del2 = st.columns([2, 1])
-        with col_del1:
-            if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", width="stretch", key="admin_del_selected_btn"):
-                if not selected_del_labels:
-                    st.warning("삭제할 공고를 선택해 주세요.")
-                else:
-                    del_ids = []
-                    for label in selected_del_labels:
-                        bid_item = bid_map[label]
-                        del_ids.append(bid_item["bid_id"])
+        confirm_del = st.checkbox(
+            f"선택한 {len(selected_del_labels)}건과 첨부파일(로컬·R2)을 복구할 수 없음을 확인했습니다.",
+            key="admin_del_confirm",
+            disabled=not selected_del_labels,
+        )
+        if st.button("🚨 선택한 공고 및 첨부파일/R2 동기화 완결 삭제", type="primary", width="stretch",
+                     key="admin_del_selected_btn", disabled=not (selected_del_labels and confirm_del)):
+            del_ids, failed = delete_bid_items([bid_map[label] for label in selected_del_labels])
+            st.session_state["admin_flash"] = (
+                f"선택한 {len(del_ids)}건의 공고를 삭제했습니다."
+                + (f" 로컬 폴더 삭제에 실패한 {len(failed)}건은 직접 확인해 주세요." if failed else "")
+            )
+            st.session_state["admin_del_confirm"] = False
+            st.rerun()
 
-                        folder_p = bid_item.get("folder_path", "")
-                        if folder_p and os.path.exists(folder_p):
-                            try:
-                                shutil.rmtree(folder_p)
-                            except OSError as ex:
-                                print(f"⚠️ 로컬 폴더 삭제 실패: {ex}")
-
-                        if folder_p:
-                            r2_key = get_bid_r2_folder_key(folder_p)
-                            if r2_key:
-                                delete_r2_folder(r2_key)
-
-                    delete_bids(del_ids)
-                    upload_db_to_r2(DB_PATH)
-
-                    st.success(f"🎉 선택한 {len(del_ids)}건의 공고 및 로컬/R2 첨부파일이 완전히 삭제되었습니다!")
-                    st.rerun()
-
-        st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("💣 [주의] 전체 공고 및 파일 클린 포맷"):
             st.warning("⚠️ 저장된 모든 공고 데이터와 로컬 data/ 폴더 및 Cloudflare R2 파일이 전부 삭제됩니다.")
-            if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행", key="admin_reset_all_btn"):
+            typed = st.text_input("계속하려면 '초기화'를 입력하세요.", key="admin_reset_confirm_text")
+            if st.button("💥 전체 공고 데이터 & 파일 클린 포맷 실행", key="admin_reset_all_btn",
+                         disabled=typed.strip() != "초기화"):
                 reset_all_bids()
                 if os.path.exists(DATA_DIR):
                     for item in os.listdir(DATA_DIR):
@@ -345,8 +336,29 @@ def render_taxonomy_and_clean_tab():
                             shutil.rmtree(item_p)
                 delete_r2_folder("data")
                 upload_db_to_r2(DB_PATH)
-                st.success("💥 전체 공고 및 첨부파일이 초기화 포맷 되었습니다!")
+                st.session_state["admin_flash"] = "전체 공고와 첨부파일을 초기화했습니다."
+                st.session_state["admin_reset_confirm_text"] = ""
                 st.rerun()
+
+
+def delete_bid_items(items):
+    """공고와 로컬·R2 첨부를 삭제하고 (삭제한 id 목록, 로컬 폴더 삭제 실패 id 목록)을 돌려준다."""
+    del_ids, failed = [], []
+    for item in items:
+        del_ids.append(item["bid_id"])
+        folder_p = item.get("folder_path", "")
+        if folder_p and os.path.exists(folder_p):
+            try:
+                shutil.rmtree(folder_p)
+            except OSError:
+                failed.append(item["bid_id"])
+        if folder_p:
+            r2_key = get_bid_r2_folder_key(folder_p)
+            if r2_key:
+                delete_r2_folder(r2_key)
+    delete_bids(del_ids)
+    upload_db_to_r2(DB_PATH)
+    return del_ids, failed
 
 
 # 💡 시크릿 톱니바퀴 클릭 시 뜨는 🔒 시스템 어드민 관리자 팝업 모달창

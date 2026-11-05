@@ -131,6 +131,20 @@ class AdminConsoleTabsAndPersistenceTests(unittest.TestCase):
         self.assertEqual(db.get_setting("run_budget"), "3.5")
         self.assertEqual(db.get_setting("r2_enabled"), "1")
 
+    def test_delete_bid_items_reports_local_failure(self):
+        import admin_console
+
+        items = [{"bid_id": "a", "folder_path": "/x/a"}, {"bid_id": "b", "folder_path": ""}]
+        with patch.object(admin_console.os.path, "exists", return_value=True), \
+             patch.object(admin_console.shutil, "rmtree", side_effect=OSError("busy")), \
+             patch.object(admin_console, "get_bid_r2_folder_key", return_value=None), \
+             patch.object(admin_console, "delete_bids") as delete, \
+             patch.object(admin_console, "upload_db_to_r2"):
+            ids, failed = admin_console.delete_bid_items(items)
+        self.assertEqual(ids, ["a", "b"])
+        self.assertEqual(failed, ["a"])
+        delete.assert_called_once_with(["a", "b"])
+
     def test_admin_console_locked_without_login(self):
         from streamlit.testing.v1 import AppTest
 

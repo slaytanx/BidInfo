@@ -2,13 +2,10 @@ import json
 import math
 import os
 from datetime import date, timedelta
-import importlib
 
 import pandas as pd
 import streamlit as st
 
-import admin_console
-importlib.reload(admin_console)
 from admin_console import show_admin_console_modal
 from classification import CATEGORIES, DEFAULT_CATEGORIES
 from crawler import crawl_and_download_bids_by_date
@@ -44,19 +41,68 @@ admin_pass_secret = None
 try:
     sec = getattr(st, "secrets", None)
     if sec is not None:
-        if "R2_ACCESS_KEY_ID" in sec:
-            os.environ["R2_ACCESS_KEY_ID"] = sec["R2_ACCESS_KEY_ID"]
-        if "R2_SECRET_ACCESS_KEY" in sec:
-            os.environ["R2_SECRET_ACCESS_KEY"] = sec["R2_SECRET_ACCESS_KEY"]
-        if "R2_ENDPOINT_URL" in sec:
-            os.environ["R2_ENDPOINT_URL"] = sec["R2_ENDPOINT_URL"]
-        if "R2_BUCKET_NAME" in sec:
-            os.environ["R2_BUCKET_NAME"] = sec["R2_BUCKET_NAME"]
-        if "OPENROUTER_API_KEY" in sec:
-            os.environ["OPENROUTER_API_KEY"] = sec["OPENROUTER_API_KEY"]
+        for name in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL", "R2_BUCKET_NAME", "OPENROUTER_API_KEY"):
+            if name in sec:
+                os.environ[name] = str(sec[name])
         admin_pass_secret = sec.get("ADMIN_PASSWORD", None)
-except BaseException:
+except Exception:  # secrets.toml 없음·파싱 오류는 키 없이 계속 실행하고 관리자 콘솔은 잠금 유지
     admin_pass_secret = None
+
+def db_stamp():
+    """DB·WAL 파일이 바뀌면 값이 달라져 캐시가 무효화된다."""
+    out = []
+    for path in (DB_PATH, DB_PATH + "-wal"):
+        try:
+            info = os.stat(path)
+            out.append((info.st_mtime_ns, info.st_size))
+        except OSError:
+            out.append(0)
+    return tuple(out)
+
+
+@st.cache_data(show_spinner=False)
+def cached_bids(stamp):
+    return load_all_bids()
+
+
+@st.cache_data(show_spinner=False)
+def cached_csv(stamp):
+    return pd.DataFrame(cached_bids(stamp)).to_csv(index=False).encode('utf-8-sig')
+
+
+@st.cache_data(show_spinner=False)
+def prepared_bids(stamp, today_key):
+    """표시용 열을 한 번만 계산한다. D-Day가 날짜에 의존하므로 오늘 날짜를 키에 포함한다."""
+    bids = cached_bids(stamp)
+    if not bids:
+        return pd.DataFrame(), {}
+    frame = pd.DataFrame(bids)
+    frame['fit_score'] = pd.to_numeric(frame['fit_score'], errors='coerce').fillna(0).astype(int)
+    frame['summary'] = frame['summary'].fillna('미분석: 분류 확정 후 첨부를 수집해 주세요')
+    frame['fit_reason'] = frame['fit_reason'].fillna('아직 분석하지 않음')
+    for column, source in (("분야", "tags"), ("세부 항목", "solution_tags"), ("업무", "work_tags")):
+        frame[column] = frame[source].apply(lambda value: ", ".join(json.loads(value or "[]")))
+    frame["D-Day"] = frame["deadline"].apply(calculate_d_day)
+    frame["starred_symbol"] = frame["starred"].apply(lambda x: "⭐" if x == 1 else "☆")
+    tag_lists = frame["tags"].apply(lambda value: json.loads(value or "[]"))
+    counts = {tag: int(tag_lists.apply(lambda tags: tag in tags).sum()) for tag in CATEGORIES}
+    return frame, counts
+
+
+def deadline_style(value):
+    """마감이 가까울수록 강하게 표시한다. 투명 색조라 라이트·다크 모두에서 글자가 읽힌다."""
+    if value == "🔥 D-DAY":
+        return "background-color: rgba(220, 38, 38, 0.28); font-weight: 700"
+    if value.startswith("⏳ D-"):
+        days = int(value.rsplit("-", 1)[1])
+        if days <= 3:
+            return "background-color: rgba(220, 38, 38, 0.20); font-weight: 700"
+        if days <= 7:
+            return "background-color: rgba(245, 158, 11, 0.22)"
+    if value == "마감됨":
+        return "opacity: 0.5"
+    return ""
+
 
 def get_admin_password():
     return admin_pass_secret or ""
@@ -141,14 +187,13 @@ st.markdown("""
     button[data-testid="stBaseButton-primary"],
     div[data-testid="stBaseButton-primary"] button,
     .stButton > button[data-testid="stBaseButton-primary"] {
-        background: linear-gradient(135deg, #FF0084 0%, #C4006B 100%) !important;
-        background-color: #E6007E !important;
+        background: #C4006B !important;
         color: #ffffff !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
-        box-shadow: 0 4px 14px rgba(230, 0, 126, 0.4) !important;
-        transition: all 0.2s ease-in-out !important;
+        box-shadow: none !important;
+        transition: background-color 0.15s ease-out !important;
     }
     [data-testid="stSidebar"] button[kind="primary"] p,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p,
@@ -167,10 +212,7 @@ st.markdown("""
     button[kind="primary"]:hover,
     button[data-testid="stBaseButton-primary"]:hover,
     div[data-testid="stBaseButton-primary"] button:hover {
-        background: linear-gradient(135deg, #D40073 0%, #A80055 100%) !important;
-        background-color: #C4006B !important;
-        box-shadow: 0 6px 18px rgba(230, 0, 126, 0.6) !important;
-        transform: translateY(-1px) !important;
+        background: #A80055 !important;
     }
 
     /* 💥 ⚙️ 어드민 톱니바퀴 버튼 회색 테두리 및 배경 완벽 투명화 & 수평 정렬 💥 */
@@ -442,10 +484,8 @@ with st.sidebar:
     with col_b1:
         run_crawl = st.button("🚀 수집 시작", type="primary", width="stretch")
     with col_b2:
-        raw_bids_for_csv = load_all_bids()
-        if raw_bids_for_csv:
-            csv_df = pd.DataFrame(raw_bids_for_csv)
-            csv_export = csv_df.to_csv(index=False).encode('utf-8-sig')
+        if cached_bids(db_stamp()):
+            csv_export = cached_csv(db_stamp())
             st.download_button(
                 label="📥 CSV 다운",
                 data=csv_export,
@@ -518,41 +558,40 @@ if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_
         st.json(m)
 
 # --- 메인 데이터 뷰 및 탭 ---
-bids_data = load_all_bids()
-df = pd.DataFrame(bids_data) if bids_data else pd.DataFrame()
+if st.session_state.get("flash_toast"):
+    st.toast(st.session_state.pop("flash_toast"), icon="✅")
 
-if not df.empty:
-    df['fit_score'] = pd.to_numeric(df['fit_score'], errors='coerce').fillna(0).astype(int)
-    df['summary'] = df['summary'].fillna('미분석: 분류 확정 후 첨부를 수집해 주세요')
-    df['fit_reason'] = df['fit_reason'].fillna('아직 분석하지 않음')
-    df["분야"] = df["tags"].apply(lambda value: ", ".join(json.loads(value or "[]")))
-    df["세부 항목"] = df["solution_tags"].apply(lambda value: ", ".join(json.loads(value or "[]")))
-    df["업무"] = df["work_tags"].apply(lambda value: ", ".join(json.loads(value or "[]")))
-    df["D-Day"] = df["deadline"].apply(calculate_d_day)
-    df["starred_symbol"] = df["starred"].apply(lambda x: "⭐" if x == 1 else "☆")
+df, tag_counts = prepared_bids(db_stamp(), str(date.today()))
 
-col_f1, col_f2, col_f3, col_f4 = st.columns([1.2, 1.4, 2.0, 1.1])
+FILTER_DEFAULTS = {"f_site": "전체 사이트", "f_score": 0, "f_title": "", "f_star": False,
+                   "f_cat": [], "f_sol": [], "f_work": [], "f_cls": "전체"}
+
+
+def reset_filters():
+    st.session_state.update(FILTER_DEFAULTS)
+
+
+col_f1, col_f2, col_f3, col_f4 = st.columns([1.3, 1.4, 2.0, 1.5], vertical_alignment="bottom")
 
 with col_f1:
     unique_sites = ["전체 사이트"] + (sorted(list(df["site_name"].unique())) if not df.empty else [])
-    selected_site_filter = st.selectbox("🌐 수집 사이트 선택", options=unique_sites)
-
+    selected_site_filter = st.selectbox("🌐 수집 사이트 선택", options=unique_sites, key="f_site")
 with col_f2:
-    min_score = st.slider("최저 적합도 점수", 0, 100, 0, step=10)
+    min_score = st.slider("최저 적합도 점수", 0, 100, 0, step=10, key="f_score")
 with col_f3:
-    filter_title = st.text_input("공고 제목 검색", "")
+    filter_title = st.text_input("공고 제목 검색", key="f_title")
 with col_f4:
-    st.markdown('<div style="padding-top: 35px;"></div>', unsafe_allow_html=True)
-    only_starred = st.checkbox("⭐ 찜한 공고만", value=False)
+    only_starred = st.checkbox("⭐ 찜한 공고만", key="f_star")
 
-category_filter = st.multiselect("표시 분야 (하나라도 일치)", CATEGORIES)
-solution_filter = st.multiselect("표시 세부 항목", taxonomy_options("세부 항목", category_filter))
-work_filter = st.multiselect("표시 업무", taxonomy_options("업무"))
-classification_filter = st.selectbox("표시 분류 상태", ["전체", "자동", "판단 보류", "수집 대기", "수동 분류", "수집 제외"])
+detail_active = sum(bool(st.session_state.get(k)) for k in ("f_cat", "f_sol", "f_work")) + (st.session_state.get("f_cls", "전체") != "전체")
+with st.expander(f"상세 필터 (분야·세부 항목·업무·분류 상태){f' · {detail_active}개 적용 중' if detail_active else ''}"):
+    category_filter = st.multiselect("표시 분야 (하나라도 일치)", CATEGORIES, key="f_cat", placeholder="전체")
+    solution_filter = st.multiselect("표시 세부 항목", taxonomy_options("세부 항목", category_filter), key="f_sol", placeholder="전체")
+    work_filter = st.multiselect("표시 업무", taxonomy_options("업무"), key="f_work", placeholder="전체")
+    classification_filter = st.selectbox("표시 분류 상태", ["전체", "자동", "판단 보류", "수집 대기", "수동 분류", "수집 제외"], key="f_cls")
 
 if not df.empty:
-    counts = {tag: sum(tag in json.loads(value or "[]") for value in df["tags"]) for tag in CATEGORIES}
-    st.caption(" · ".join(f"{tag} {count}건" for tag, count in counts.items() if count))
+    st.caption(" · ".join(f"{tag} {count}건" for tag, count in tag_counts.items() if count))
 filtered_df = df.copy() if not df.empty else pd.DataFrame()
 
 if not filtered_df.empty:
@@ -576,11 +615,15 @@ if not filtered_df.empty:
     filtered_df["num_int"] = pd.to_numeric(filtered_df["num"], errors='coerce').fillna(0)
     filtered_df = filtered_df.sort_values(by=["reg_date", "num_int"], ascending=[False, False])
 
+col_cnt, col_reset = st.columns([5, 1], vertical_alignment="center")
+col_cnt.caption(f"{len(filtered_df)} / {len(df)}건 표시")
+col_reset.button("필터 초기화", on_click=reset_filters, width="stretch")
+
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 입찰 공고 & 제안 파이프라인",
-    "📋 핵심 체크리스트 & RFP 1장 요약",
-    "💬 AI 서류 묻고 답하기 (Q&A)",
-    "분류 보류·추가 수집"
+    "공고 목록",
+    "체크리스트·요약",
+    "서류 Q&A",
+    "분류 검토",
 ])
 
 # TAB 1: 대시보드 표
@@ -594,7 +637,7 @@ with tab1:
         disp_df.index = range(1, len(disp_df) + 1)
 
         st.dataframe(
-            disp_df,
+            disp_df.style.map(deadline_style, subset=["D-Day"]),
             width="stretch",
             height=425,
             column_order=["제목", "분야", "세부 항목", "업무", "분류 상태", "문서 상태", "분석 상태", "D-Day", "수집사이트", "찜", "진행상태", "적합도", "사업요약", "원본글", "계열사", "번호", "등록일", "적합사유", "분석 모델"],
@@ -641,7 +684,7 @@ with tab1:
                 if st.button("💾 상태 저장", type="primary", width="stretch"):
                     update_bid_status(selected_row["bid_id"], new_status, 1 if is_star else 0)
                     upload_db_to_r2(DB_PATH)
-                    st.success(f"[{selected_row['title'][:15]}...] 상태 업데이트 완료!")
+                    st.session_state["flash_toast"] = f"[{selected_row['title'][:15]}...] 상태 업데이트 완료!"
                     st.rerun()
             with col_p5:
                 if st.button("🔍 팝업 상세보기", width="stretch"):
@@ -658,7 +701,8 @@ with tab2:
         st.warning("필터 조건에 일치하는 공고가 없습니다.")
     else:
         engine_list = get_configured_engine_list()
-        for _, row in filtered_df.iterrows():
+        page_limit = st.session_state.get("tab2_limit", 30)
+        for _, row in filtered_df.head(page_limit).iterrows():
             star_mark = "⭐ " if row['starred'] == 1 else ""
             expander_title = f"{star_mark}[{row['status']}] [{row['D-Day']}] [{row['org']}] {row['title']} (적합도: {row['fit_score']}점)"
 
@@ -688,6 +732,11 @@ with tab2:
                 if rfp_state_key in st.session_state:
                     st.markdown("#### 📄 RFP 1장 요약 리포트:")
                     st.info(st.session_state[rfp_state_key])
+        if len(filtered_df) > page_limit:
+            st.caption(f"{page_limit} / {len(filtered_df)}건 표시 중")
+            if st.button("30건 더 보기", key="tab2_more"):
+                st.session_state["tab2_limit"] = page_limit + 30
+                st.rerun()
 
 # TAB 3: AI 서류 Q&A
 with tab3:
@@ -696,9 +745,12 @@ with tab3:
         st.warning("필터 조건에 일치하는 공고가 없습니다.")
     else:
         engine_list = get_configured_engine_list()
-        bid_options = {f"[{b['org']}] {b['title']} ({b['reg_date']}) - {b['fit_score']}점": b for _, b in filtered_df.iterrows()}
-        selected_label = st.selectbox("질문할 입찰 공고 선택", list(bid_options.keys()))
-        selected_bid = bid_options[selected_label]
+        bid_options = {b["bid_id"]: b for _, b in filtered_df.iterrows()}
+        selected_id = st.selectbox(
+            "질문할 입찰 공고 선택", list(bid_options.keys()),
+            format_func=lambda bid_id: f"[{bid_options[bid_id]['org']}] {bid_options[bid_id]['title']} ({bid_options[bid_id]['reg_date']}) - {bid_options[bid_id]['fit_score']}점",
+        )
+        selected_bid = bid_options[selected_id]
 
         st.info(f"📌 **선택된 공고**: {selected_bid['title']}\n\n💡 **AI 요약**: {selected_bid['summary']}")
 

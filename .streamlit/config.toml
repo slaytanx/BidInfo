@@ -1,0 +1,3 @@
+[theme]
+# 흰 글씨 대비 5.9:1(WCAG AA). 기본 빨강(#FF4B4B)은 3.3:1이라 교체
+primaryColor = "#C4006B"
