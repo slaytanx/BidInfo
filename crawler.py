@@ -11,6 +11,15 @@ import threading
 import time
 from urllib.parse import urljoin, urlparse, unquote
 import requests
+
+try:
+    from curl_cffi import requests as cffi_requests
+    from curl_cffi.requests.errors import RequestsError as CffiRequestsError, CurlError as CffiCurlError
+    _NETWORK_EXCEPTIONS = (requests.RequestException, CffiRequestsError, CffiCurlError)
+    _HAS_CURL_CFFI = True
+except ImportError:
+    _NETWORK_EXCEPTIONS = (requests.RequestException,)
+    _HAS_CURL_CFFI = False
 from classification import classify_rules, classify_local, should_collect
 from date_utils import extract_date_from_text
 from db import existing_bid_ids, manual_classifications
@@ -61,15 +70,19 @@ def _request(session, method, url, **kwargs):
                 response.close(); time.sleep(1); continue
             response.raise_for_status()
             return response
-        except requests.RequestException as exc:
+        except _NETWORK_EXCEPTIONS as exc:
             if attempt:
                 raise CrawlError(f'{host}: 네트워크 또는 HTTP 오류') from exc
     raise CrawlError('수집 재시도 실패')
 
 
 def _session():
-    session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9'})
+    if _HAS_CURL_CFFI:
+        session = cffi_requests.Session(impersonate='chrome')
+    else:
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    session.headers['Accept-Language'] = 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7'
     return session
 
 

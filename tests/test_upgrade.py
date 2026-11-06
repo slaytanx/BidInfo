@@ -10,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch, Mock
+import requests
 import zipfile
 
 import classification
@@ -255,6 +256,20 @@ class ClassificationCrawlerTests(unittest.TestCase):
             saved = Path(crawler.handle_download_and_extract_zip(response, folder, 'default.pdf'))
             self.assertEqual(saved.name, korean_str)
             self.assertTrue(saved.exists())
+
+    def test_crawler_session_creates_curl_cffi_or_requests(self):
+        with crawler._session() as session:
+            self.assertIn('ko-KR', session.headers.get('Accept-Language', ''))
+            if crawler._HAS_CURL_CFFI:
+                from curl_cffi import requests as cffi_requests
+                self.assertIsInstance(session, cffi_requests.Session)
+
+    def test_crawler_session_fallback_when_cffi_disabled(self):
+        with patch.object(crawler, '_HAS_CURL_CFFI', False):
+            with crawler._session() as session:
+                self.assertIsInstance(session, requests.Session)
+                self.assertIn('ko-KR', session.headers.get('Accept-Language', ''))
+                self.assertEqual(session.headers.get('User-Agent'), 'Mozilla/5.0')
 
 
 class BudgetAnalysisTests(unittest.TestCase):
