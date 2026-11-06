@@ -5,7 +5,6 @@ import os
 import sqlite3
 from urllib.parse import urlparse
 from contextlib import contextmanager
-from llm_manager import save_secrets, get_secret
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data/bids_history.db')
 _READY = set()
@@ -16,7 +15,6 @@ EXTRA_COLUMNS = {'source_key': "TEXT DEFAULT ''", 'source_id': "TEXT DEFAULT ''"
 EXTRA_COLUMNS.update({'solution_tags': "TEXT DEFAULT '[]'", 'work_tags': "TEXT DEFAULT '[]'",
                       'legacy_tags': "TEXT DEFAULT '[]'", 'classification_status': "TEXT DEFAULT '자동'",
                       'manual_classification': "TEXT DEFAULT '{}'", 'notice_text': "TEXT DEFAULT ''"})
-SECRET_KEYS = {'e1_key': 'GEMINI_API_KEY', 'e2_key': 'OPENROUTER_API_KEY', 'e3_key': 'NVIDIA_API_KEY'}
 
 
 @contextmanager
@@ -101,10 +99,6 @@ def init_db():
                 conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES ('legacy_selected_categories',?)",old_selection)
             conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES ('selected_categories',?)",(json.dumps(DEFAULT_DOMAINS,ensure_ascii=False),))
             conn.execute("INSERT INTO settings(key,value) VALUES ('taxonomy_migrated_v1','1')")
-        secrets = {SECRET_KEYS[k]: v for k, v in conn.execute('SELECT key,value FROM settings') if k in SECRET_KEYS and v}
-        if secrets:
-            save_secrets(secrets)
-        conn.executemany('DELETE FROM settings WHERE key=?', [(k,) for k in SECRET_KEYS])
         conn.commit()
     _READY.add(DB_PATH)
 
@@ -262,8 +256,6 @@ def delete_site(site_name):
 
 
 def save_setting(key, value):
-    if key in SECRET_KEYS:
-        save_secrets({SECRET_KEYS[key]: value}); return
     init_db()
     with get_db_connection() as conn:
         conn.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, str(value))); conn.commit()
@@ -271,8 +263,6 @@ def save_setting(key, value):
 
 def get_setting(key, default_val=''):
     init_db()
-    if key in SECRET_KEYS:
-        return get_secret(SECRET_KEYS[key], default_val)
     with get_db_connection() as conn:
         row = conn.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
         return row[0] if row else default_val

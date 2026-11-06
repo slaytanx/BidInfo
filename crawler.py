@@ -58,7 +58,8 @@ def _text(value):
 
 def _request(session, method, url, **kwargs):
     host = urlparse(url).hostname
-    for attempt in range(2):
+    max_attempts = 3
+    for attempt in range(max_attempts):
         with _HOST_LOCK:
             delay = max(0, .3 - (time.monotonic() - _LAST_REQUEST.get(host, 0)))
             if delay:
@@ -66,13 +67,24 @@ def _request(session, method, url, **kwargs):
             _LAST_REQUEST[host] = time.monotonic()
         try:
             response = session.request(method, url, timeout=(5, 25), **kwargs)
-            if response.status_code in (429, 500, 502, 503, 504) and attempt == 0:
-                response.close(); time.sleep(1); continue
+            if response.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts - 1:
+                retry_header = response.headers.get('Retry-After')
+                backoff = 1.5 * (2 ** attempt)
+                if retry_header:
+                    try:
+                        backoff = min(10.0, max(1.0, float(retry_header)))
+                    except ValueError:
+                        pass
+                response.close()
+                time.sleep(backoff)
+                continue
             response.raise_for_status()
             return response
         except _NETWORK_EXCEPTIONS as exc:
-            if attempt:
-                raise CrawlError(f'{host}: 네트워크 또는 HTTP 오류') from exc
+            if attempt < max_attempts - 1:
+                time.sleep(1.5 * (2 ** attempt))
+                continue
+            raise CrawlError(f'{host}: 네트워크 또는 HTTP 오류') from exc
     raise CrawlError('수집 재시도 실패')
 
 

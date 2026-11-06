@@ -242,5 +242,29 @@ class RunCrawlSettingsRetrievalTests(unittest.TestCase):
             self.assertEqual(db.get_setting("sec_kw"), "정보보호체계")
 
 
+class AdminClearCacheTests(unittest.TestCase):
+    def test_clear_app_cache_deletes_json_files_and_returns_count(self):
+        import tempfile
+        import admin_console
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs = Path(tmpdir) / "cache" / "documents"
+            analysis = Path(tmpdir) / "cache" / "analysis"
+            docs.mkdir(parents=True)
+            analysis.mkdir(parents=True)
+            (docs / "d1.json").write_text("{}")
+            (docs / "d2.json").write_text("{}")
+            (analysis / "a1.json").write_text("{}")
+            (docs / "ignore.txt").write_text("text")
+
+            with patch.object(admin_console, "DATA_DIR", tmpdir):
+                count = admin_console.clear_app_cache()
+
+            self.assertEqual(count, 3)
+            self.assertFalse((docs / "d1.json").exists())
+            self.assertFalse((docs / "d2.json").exists())
+            self.assertFalse((analysis / "a1.json").exists())
+            self.assertTrue((docs / "ignore.txt").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

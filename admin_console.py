@@ -250,9 +250,36 @@ def render_maintenance_and_benchmark_tab():
                 st.rerun()
 
 
+def clear_app_cache() -> int:
+    """문서 파싱 캐시와 LLM 분석 캐시를 안전하게 비우고 삭제된 파일 수를 반환한다."""
+    count = 0
+    for cache_sub in ("documents", "analysis"):
+        c_path = Path(DATA_DIR) / "cache" / cache_sub
+        if c_path.exists():
+            for f in c_path.glob("*.json"):
+                try:
+                    f.unlink()
+                    count += 1
+                except OSError:
+                    pass
+    return count
+
+
 def render_taxonomy_and_clean_tab():
     """[탭 4] 분류 사전 & 공고 삭제 센터 (Taxonomy & Clean)"""
     show_taxonomy_editor()
+
+    st.markdown("---")
+    st.markdown("### 임시 캐시 데이터 관리")
+    st.caption("공고 DB와 원본 첨부파일은 보존하면서, 문서 파싱 캐시 및 LLM 분석 캐시만 안전하게 비웁니다.")
+    col_c1, col_c2 = st.columns([3, 1])
+    with col_c1:
+        st.write("프롬프트 개선이나 파서 업데이트 후 재분석 테스트가 필요할 때 캐시를 초기화할 수 있습니다.")
+    with col_c2:
+        if st.button("캐시 1클릭 비우기", width="stretch", key="admin_clear_cache_btn"):
+            cleared = clear_app_cache()
+            st.session_state["admin_flash"] = f"임시 캐시 파일 {cleared}건을 비웠습니다."
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### 불필요 데이터 & 첨부파일 통합 삭제 센터")

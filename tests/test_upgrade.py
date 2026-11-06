@@ -271,6 +271,34 @@ class ClassificationCrawlerTests(unittest.TestCase):
                 self.assertIn('ko-KR', session.headers.get('Accept-Language', ''))
                 self.assertEqual(session.headers.get('User-Agent'), 'Mozilla/5.0')
 
+    def test_crawler_request_retry_after_header_backoff(self):
+        resp_429 = Mock(status_code=429, headers={'Retry-After': '2.5'})
+        resp_200 = Mock(status_code=200, text='ok')
+        session = Mock()
+        session.request.side_effect = [resp_429, resp_200]
+
+        sleeps = []
+        with patch.object(crawler.time, 'sleep', side_effect=sleeps.append):
+            resp = crawler._request(session, 'GET', 'https://example.com/test')
+
+        self.assertEqual(resp, resp_200)
+        self.assertIn(2.5, sleeps)
+        resp_429.close.assert_called_once()
+
+    def test_crawler_request_exponential_backoff_on_500(self):
+        resp_500 = Mock(status_code=500, headers={})
+        resp_200 = Mock(status_code=200, text='ok')
+        session = Mock()
+        session.request.side_effect = [resp_500, resp_200]
+
+        sleeps = []
+        with patch.object(crawler.time, 'sleep', side_effect=sleeps.append):
+            resp = crawler._request(session, 'GET', 'https://example.com/test')
+
+        self.assertEqual(resp, resp_200)
+        self.assertIn(1.5, sleeps)
+        resp_500.close.assert_called_once()
+
 
 class BudgetAnalysisTests(unittest.TestCase):
     def test_empty_and_bad_json(self):
@@ -453,10 +481,10 @@ class PageTests(unittest.TestCase):
                 llm.generate_llm_response('prompt', configs)
             self.assertIn('Local Ollama: Connection refused to Ollama', str(ctx.exception))
 
-        nim_configs = [{'provider': 'NVIDIA NIM', 'model': 'meta/llama-3.1-8b', 'api_key': ''}]
+        unsupported_configs = [{'provider': 'NVIDIA NIM', 'model': 'meta/llama-3.1-8b', 'api_key': ''}]
         with self.assertRaises(llm.LLMError) as ctx2:
-            llm.generate_llm_response('prompt', nim_configs)
-        self.assertIn('NVIDIA NIM: API 키 미설정', str(ctx2.exception))
+            llm.generate_llm_response('prompt', unsupported_configs)
+        self.assertIn('NVIDIA NIM: 미지원 공급자: NVIDIA NIM', str(ctx2.exception))
 
     def test_extract_facts_short_quote_in_text(self):
         text = '사업기간은 6개월이며 총 사업예산은 1억원이다.'

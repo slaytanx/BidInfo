@@ -118,20 +118,7 @@ def generate_llm_response(prompt, engine_configs, json_mode=False, max_tokens=18
             if provider == 'OpenRouter':
                 return call_openrouter(prompt, config.get('api_key') or get_secret('OPENROUTER_API_KEY'),
                                        config.get('model', CLOUD_MODELS[0]), max_tokens, json_mode)
-            if provider in ('Google Gemini', 'NVIDIA NIM'):
-                # 기존 공급자 설정도 유지하되 외부 호출은 명시적으로 선택된 경우만 수행한다.
-                key = config.get('api_key', '')
-                if not key:
-                    raise LLMError('API 키 미설정')
-                if provider == 'Google Gemini':
-                    response = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{config['model']}:generateContent",
-                        headers={'x-goog-api-key': key}, json={'contents': [{'parts': [{'text': prompt}]}]}, timeout=(5, 90))
-                    response.raise_for_status()
-                    return response.json()['candidates'][0]['content']['parts'][0]['text']
-                response = requests.post('https://integrate.api.nvidia.com/v1/chat/completions',
-                    headers={'Authorization': f'Bearer {key}'}, json={'model': config['model'], 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}, timeout=(5, 90))
-                response.raise_for_status()
-                return response.json()['choices'][0]['message']['content']
+            raise LLMError(f'미지원 공급자: {provider}')
         except Exception as exc:
             errors.append(f'{provider}: {exc}')
     raise LLMError('; '.join(errors) or '사용 가능한 엔진 없음')

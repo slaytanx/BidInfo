@@ -52,31 +52,22 @@ class AdversarialExceptionPreservationStressTests(unittest.TestCase):
                 llm.generate_llm_response('prompt', configs)
         self.assertIn('OpenRouter: OPENROUTER_API_KEY 미설정', str(ctx.exception))
 
-    def test_gemini_and_nvidia_missing_key_preserved(self):
-        gemini_configs = [{'provider': 'Google Gemini', 'model': 'gemini-1.5-flash', 'api_key': ''}]
+    def test_unsupported_provider_rejected(self):
+        unsupported = [{'provider': 'UnsupportedProvider', 'model': 'test-model'}]
         with self.assertRaises(llm.LLMError) as ctx:
-            llm.generate_llm_response('prompt', gemini_configs)
-        self.assertIn('Google Gemini: API 키 미설정', str(ctx.exception))
-
-        nim_configs = [{'provider': 'NVIDIA NIM', 'model': 'meta/llama-3.1-8b', 'api_key': ''}]
-        with self.assertRaises(llm.LLMError) as ctx2:
-            llm.generate_llm_response('prompt', nim_configs)
-        self.assertIn('NVIDIA NIM: API 키 미설정', str(ctx2.exception))
+            llm.generate_llm_response('prompt', unsupported)
+        self.assertIn('UnsupportedProvider: 미지원 공급자: UnsupportedProvider', str(ctx.exception))
 
     def test_cascading_multi_engine_fallback_preserves_all_errors_in_order(self):
         """When multiple engines fail in sequence, all error messages are joined by semicolon."""
         configs = [
             {'provider': 'OpenRouter', 'model': 'deepseek/test', 'api_key': 'key'},
-            {'provider': 'Google Gemini', 'model': 'gemini-test', 'api_key': 'gemini-key'},
             {'provider': 'Local Ollama', 'model': 'ollama-test'},
         ]
         resp_401 = Mock(status_code=401)
-        resp_gemini_500 = Mock(status_code=500)
-        resp_gemini_500.raise_for_status.side_effect = requests.exceptions.HTTPError('500 Server Error: Internal')
 
         with patch.object(llm.requests, 'post', side_effect=[
                  resp_401,                           # OpenRouter attempt
-                 resp_gemini_500.raise_for_status.side_effect,  # Gemini attempt
                  requests.exceptions.ConnectTimeout('Ollama timeout') # Ollama attempt
              ]):
             with self.assertRaises(llm.LLMError) as ctx:
@@ -84,7 +75,6 @@ class AdversarialExceptionPreservationStressTests(unittest.TestCase):
 
         err_msg = str(ctx.exception)
         self.assertIn('OpenRouter: OpenRouter HTTP 401', err_msg)
-        self.assertIn('Google Gemini: 500 Server Error', err_msg)
         self.assertIn('Local Ollama: Ollama 연결/응답 실패', err_msg)
 
     def test_first_engine_fails_second_succeeds_returns_content(self):
