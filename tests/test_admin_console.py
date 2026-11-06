@@ -195,14 +195,14 @@ show_admin_console_modal("dummy_pw")
         self.assertFalse(app.exception)
 
         tab_labels = [t.label for t in app.tabs]
-        self.assertIn("AI 모델 연결 & 예산", tab_labels)
+        self.assertIn("AI 모델 연결", tab_labels)
         self.assertIn("수집 사이트 & Cloudflare R2 백업", tab_labels)
         self.assertIn("데이터 재처리 & 벤치마크", tab_labels)
         self.assertIn("분류 사전 & 공고 삭제 센터", tab_labels)
 
 
 class RunCrawlSettingsRetrievalTests(unittest.TestCase):
-    """Verify run_crawl retrieves pri_kw, sec_kw, and run_budget from get_setting."""
+    """Verify run_crawl retrieves pri_kw and sec_kw from get_setting."""
 
     def test_run_crawl_retrieves_settings_from_db_and_does_not_overwrite(self):
         from streamlit.testing.v1 import AppTest
@@ -210,7 +210,6 @@ class RunCrawlSettingsRetrievalTests(unittest.TestCase):
         # Set specific settings in DB
         db.save_setting("pri_kw", "차세대네트워크")
         db.save_setting("sec_kw", "정보보호체계")
-        db.save_setting("run_budget", "4.5")
 
         with patch.object(crawler, "crawl_and_download_bids_by_date") as mock_crawl, \
              patch.object(pipeline, "process_bids") as mock_process:
@@ -241,112 +240,6 @@ class RunCrawlSettingsRetrievalTests(unittest.TestCase):
             # Verify settings in DB were NOT overwritten during run_crawl
             self.assertEqual(db.get_setting("pri_kw"), "차세대네트워크")
             self.assertEqual(db.get_setting("sec_kw"), "정보보호체계")
-            self.assertEqual(db.get_setting("run_budget"), "4.5")
-
-
-class AppRunBudgetBoundaryTests(unittest.TestCase):
-    """Regression: Verify app.py mounting via AppTest with corrupted, negative, overflow, and NaN run_budget."""
-
-    def setUp(self):
-        self.orig_budget = db.get_setting("run_budget", "1.0")
-
-    def tearDown(self):
-        db.save_setting("run_budget", self.orig_budget)
-
-    def test_app_mounting_with_corrupted_negative_overflow_nan_budget(self):
-        from streamlit.testing.v1 import AppTest
-
-        adversarial_budgets = [
-            "-5.0",       # Negative float (< 0.0)
-            "-0.1",       # Negative boundary
-            "150.0",      # Overflow (> 100.0)
-            "NaN",        # NaN
-            "Infinity",   # Infinite float
-            "corrupted",  # Malformed string
-            "",           # Empty string
-        ]
-
-        app_path = str(Path(__file__).resolve().parents[1] / "app.py")
-
-        for val in adversarial_budgets:
-            with self.subTest(run_budget=val):
-                db.save_setting("run_budget", val)
-                app = AppTest.from_file(app_path).run(timeout=30)
-                self.assertFalse(
-                    app.exception,
-                    f"app.py crashed when run_budget was {val!r}: {app.exception[0].value if app.exception else ''}"
-                )
-
-    def test_run_crawl_with_adversarial_run_budget(self):
-        """Regression: Verify run_crawl execution with negative, overflow, and NaN budget does not crash."""
-        from streamlit.testing.v1 import AppTest
-
-        app_path = str(Path(__file__).resolve().parents[1] / "app.py")
-
-        with patch.object(crawler, "crawl_and_download_bids_by_date") as mock_crawl, \
-             patch.object(pipeline, "process_bids") as mock_process:
-
-            mock_crawl.return_value = [{"게시물ID": "test_1", "제목": "테스트 공고"}]
-            mock_process.return_value = ([], {"analyzed": 1})
-
-            for val in ["-5.0", "150.0", "NaN"]:
-                with self.subTest(crawl_run_budget=val):
-                    db.save_setting("run_budget", val)
-                    app = AppTest.from_file(app_path).run(timeout=30)
-                    self.assertFalse(app.exception)
-
-                    crawl_btn = next((b for b in app.sidebar.button if b.label == "수집 시작"), None)
-                    self.assertIsNotNone(crawl_btn)
-                    crawl_btn.click()
-                    app.run(timeout=30)
-                    self.assertFalse(
-                        app.exception,
-                        f"run_crawl crashed when run_budget was {val!r}: {app.exception[0].value if app.exception else ''}"
-                    )
-
-
-class AdminConsoleModalBudgetBoundaryTests(unittest.TestCase):
-    """Regression: Verify admin_console.py modal rendering via AppTest with corrupted, negative, overflow, and NaN run_budget."""
-
-    def setUp(self):
-        self.orig_budget = db.get_setting("run_budget", "1.0")
-
-    def tearDown(self):
-        db.save_setting("run_budget", self.orig_budget)
-
-    def test_admin_console_modal_with_corrupted_negative_overflow_nan_budget(self):
-        from streamlit.testing.v1 import AppTest
-
-        adversarial_budgets = [
-            "-5.0",       # Negative float (< 0.0)
-            "-0.1",       # Negative boundary
-            "150.0",      # Overflow (> 100.0)
-            "NaN",        # NaN
-            "Infinity",   # Infinite float
-            "corrupted",  # Malformed string
-            "",           # Empty string
-        ]
-
-        script = """
-import streamlit as st
-from admin_console import show_admin_console_modal
-
-st.session_state["admin_logged_in"] = True
-show_admin_console_modal("dummy_pw")
-"""
-
-        for val in adversarial_budgets:
-            with self.subTest(run_budget=val):
-                db.save_setting("run_budget", val)
-                app = AppTest.from_string(script).run(timeout=30)
-                self.assertFalse(
-                    app.exception,
-                    f"admin_console modal crashed when run_budget was {val!r}: {app.exception[0].value if app.exception else ''}"
-                )
-                budget_inputs = [w for w in app.number_input if w.key == "admin_run_budget"]
-                self.assertEqual(len(budget_inputs), 1)
-                self.assertGreaterEqual(budget_inputs[0].value, 0.0)
-                self.assertLessEqual(budget_inputs[0].value, 100.0)
 
 
 if __name__ == "__main__":

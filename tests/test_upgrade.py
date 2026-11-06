@@ -258,18 +258,6 @@ class ClassificationCrawlerTests(unittest.TestCase):
 
 
 class BudgetAnalysisTests(unittest.TestCase):
-    def test_parallel_reservation_and_unknown_charge(self):
-        budget=llm.RunBudget(1);accepted=[]
-        def reserve():
-            try:budget.reserve(Decimal('.6'));accepted.append(True)
-            except llm.BudgetExceeded:accepted.append(False)
-        threads=[threading.Thread(target=reserve) for _ in range(2)]
-        for t in threads:t.start()
-        for t in threads:t.join()
-        self.assertEqual(sum(accepted),1)
-        budget.settle(Decimal('.6'))
-        self.assertEqual(budget.spent,Decimal('.6'))
-
     def test_empty_and_bad_json(self):
         self.assertEqual(analysis.analyze_bid_with_ollama('서버','')['analysis_status'],'실패')
         with self.assertRaises(ValueError):analysis.validate_analysis({'summary':'불완전'})
@@ -377,11 +365,10 @@ class BudgetAnalysisTests(unittest.TestCase):
         self.assertEqual(merged['deadline'],'2026-11-20');self.assertEqual(merged['budget'],'근거 미확인: 5억원')
         self.assertEqual((merged['fit_score'],merged['evidence']),(70,[ev]));self.assertEqual(set(merged['tags']),{'인프라','보안'})
 
-    def test_budget_exhausted_uses_local(self):
-        budget=llm.RunBudget(0)
-        with patch.object(budget,'price',return_value=(Decimal('0.01'),Decimal('0.01'))),patch.object(llm,'get_secret',return_value='fixture'),patch.object(llm,'call_ollama',return_value='local'),patch.object(llm.requests,'post') as post:
-            result=llm.generate_llm_response('prompt',llm.engine_configs(budget=budget))
-        self.assertEqual(result,'local');post.assert_not_called()
+    def test_openrouter_failure_falls_back_to_local(self):
+        with patch.object(llm, 'get_secret', return_value='fixture'), patch.object(llm, 'call_ollama', return_value='local'), patch.object(llm.requests, 'post', side_effect=llm.LLMError('OpenRouter error')):
+            result = llm.generate_llm_response('prompt', llm.engine_configs())
+        self.assertEqual(result, 'local')
 
     def test_question_answer_rejects_invented_quotes_and_handles_failure(self):
         with patch.object(analysis, 'generate_llm_response', return_value='{"answer":"허위 마감일","evidence":[{"quote":"없는 원문","location":"p.1"}]}'):
@@ -436,27 +423,13 @@ class PageTests(unittest.TestCase):
             app.run(timeout=20)
             self.assertFalse(app.exception)
 
-    def test_cloud_retry_is_budgeted(self):
-        budget = llm.RunBudget(1)
+    def test_cloud_retry_on_429(self):
         busy = Mock(status_code=429, headers={'Retry-After':'0'})
         okay = Mock(status_code=200)
-        okay.json.return_value = {'usage':{'cost':.001}, 'choices':[{'message':{'content':'{"ok":true}'}}]}
-        with patch.object(budget, 'price', return_value=(Decimal('.000001'),Decimal('.000001'))), patch.object(llm.requests, 'post', side_effect=[busy,okay]), patch.object(llm.time,'sleep'):
-            llm.call_openrouter('시험', 'synthetic-key', budget=budget, max_tokens=100)
-        self.assertEqual(budget.calls,2)
-        self.assertEqual(budget.spent,Decimal('.001'))
-
-    def test_cloud_retry_settle_zero_cost_no_double_charge(self):
-        budget = llm.RunBudget(1)
-        busy = Mock(status_code=429, headers={'Retry-After': '0'})
-        okay = Mock(status_code=200)
-        okay.json.return_value = {'usage': {'cost': .0015}, 'choices': [{'message': {'content': '{"result": 1}'}}]}
-        with patch.object(budget, 'price', return_value=(Decimal('.000001'), Decimal('.000001'))), patch.object(llm.requests, 'post', side_effect=[busy, okay]), patch.object(llm.time, 'sleep'):
-            res = llm.call_openrouter('테스트', 'synthetic-key', budget=budget, max_tokens=100)
-        self.assertEqual(res, '{"result": 1}')
-        self.assertEqual(budget.calls, 2)
-        self.assertEqual(budget.reserved, Decimal('0'))
-        self.assertEqual(budget.spent, Decimal('.0015'))
+        okay.json.return_value = {'choices':[{'message':{'content':'{"ok":true}'}}]}
+        with patch.object(llm.requests, 'post', side_effect=[busy, okay]), patch.object(llm.time, 'sleep'):
+            res = llm.call_openrouter('시험', 'synthetic-key', max_tokens=100)
+        self.assertEqual(res, '{"ok":true}')
 
     def test_generate_llm_response_preserves_exception(self):
         configs = [{'provider': 'Local Ollama', 'model': 'llama3'}]

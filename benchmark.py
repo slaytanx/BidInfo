@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from llm_manager import CLOUD_MODELS, LOCAL_MODELS, RunBudget, get_secret
+from llm_manager import CLOUD_MODELS, LOCAL_MODELS, get_secret
 from ollama_summary import analyze_bid_with_ollama, PROMPT_VERSION
 
 
@@ -27,17 +27,15 @@ def rfp_cases():
     return cases
 
 
-def run_benchmark(models=None, budget_limit=1, progress=None, output=None):
+def run_benchmark(models=None, progress=None, output=None):
     models = models or LOCAL_MODELS + CLOUD_MODELS
-    budget = RunBudget(budget_limit)
     report = {'date': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(), 'prompt_version': PROMPT_VERSION,
               'dataset': '한글 합성 RFP 12건; 실제 RFP 정확도를 보장하지 않음', 'results': []}
     for model in models:
         if model in CLOUD_MODELS and not get_secret('OPENROUTER_API_KEY'):
             report['results'].append({'model': model, 'status': 'API 키 미연결', 'cases': 0})
             continue
-        config = {'provider': 'OpenRouter' if model in CLOUD_MODELS else 'Local Ollama', 'model': model, 'budget': budget}
-        before_cost = budget.snapshot()['spent_or_reserved_usd']
+        config = {'provider': 'OpenRouter' if model in CLOUD_MODELS else 'Local Ollama', 'model': model}
         latencies, successes, accurate, tag_hits = [], 0, 0, 0
         for index, case in enumerate(rfp_cases(), 1):
             start = time.monotonic()
@@ -53,12 +51,10 @@ def run_benchmark(models=None, budget_limit=1, progress=None, output=None):
         stats = {'model': model, 'status': '완료', 'cases': 12, 'median_seconds': round(sorted(latencies)[6],2),
                  'total_seconds': round(sum(latencies),2), 'json_success_rate': round(successes/12,3),
                  'required_fields_accuracy': round(accurate/12,3), 'tag_recall': round(tag_hits/12,3),
-                 'cost_usd': round(budget.snapshot()['spent_or_reserved_usd']-before_cost, 6),
                  'prompt_version': PROMPT_VERSION}
         report['results'].append(stats)
         if output:
             _write_report(report, output)
-    report['budget'] = budget.snapshot()
     if output:
         _write_report(report, output)
     return report
@@ -80,7 +76,6 @@ def _write_report(report, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--models', nargs='+', default=LOCAL_MODELS + CLOUD_MODELS)
-    parser.add_argument('--budget', type=float, default=1)
     args = parser.parse_args()
-    report = run_benchmark(args.models, args.budget, lambda m,n,t: print(f'{m}: {n}/{t}', flush=True), Path(__file__).parent/'data/model_benchmark.json')
+    report = run_benchmark(args.models, lambda m,n,t: print(f'{m}: {n}/{t}', flush=True), Path(__file__).parent/'data/model_benchmark.json')
     print(json.dumps(report, ensure_ascii=False, indent=2))

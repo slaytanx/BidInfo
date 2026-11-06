@@ -1,6 +1,4 @@
-"""모델 호출, 비용 예약과 제한된 동시 실행."""
-import contextlib
-from decimal import Decimal
+"""모델 호출과 제한된 동시 실행."""
 import json
 import os
 from pathlib import Path
@@ -12,21 +10,12 @@ LOCAL_MODEL = 'nemo-bolt:fast'
 CLASSIFIER_MODEL = 'nemo-bolt:fast'
 CLOUD_MODELS = ['deepseek/deepseek-v4-flash-0731', 'z-ai/glm-5.3-flash', 'upstage/solar-pro4']
 LOCAL_MODELS = [LOCAL_MODEL, 'gemma4:26b-mlx', 'gemma4:12b-mlx', 'qwen3.8:fast']
-KNOWN_MODEL_PRICES = {
-    'deepseek/deepseek-v4-flash-0731': (Decimal('0.00000014'), Decimal('0.00000028')),
-    'z-ai/glm-5.3-flash': (Decimal('0.0000001'), Decimal('0.0000002')),
-    'upstage/solar-pro4': (Decimal('0.00000025'), Decimal('0.0000005')),
-}
 _LOCAL_LOCK = threading.Semaphore(1)
 _CLOUD_LOCK = threading.Semaphore(2)
 SECRET_FILE = Path(__file__).parent / '.local_secrets.json'
 
 
 class LLMError(RuntimeError):
-    pass
-
-
-class BudgetExceeded(LLMError):
     pass
 
 
@@ -73,64 +62,6 @@ def parse_json(value):
     return parsed
 
 
-class RunBudget:
-    def __init__(self, limit=1):
-        self.limit = Decimal(str(limit))
-        if self.limit < 0:
-            raise ValueError('예산은 0 이상이어야 합니다')
-        self.spent = Decimal(0)
-        self.reserved = Decimal(0)
-        self.calls = 0
-        self.lock = threading.Lock()
-        self.prices = {}
-
-    def price(self, model):
-        with self.lock:
-            if model not in self.prices:
-                try:
-                    response = requests.get('https://openrouter.ai/api/v1/models', timeout=(5, 20))
-                    response.raise_for_status()
-                    for item in response.json().get('data', []):
-                        p = item.get('pricing', {})
-                        if p.get('prompt') is not None and p.get('completion') is not None:
-                            self.prices[item['id']] = (Decimal(str(p['prompt'])), Decimal(str(p['completion'])))
-                except Exception:
-                    if model in KNOWN_MODEL_PRICES:
-                        self.prices[model] = KNOWN_MODEL_PRICES[model]
-            if model not in self.prices:
-                if model in KNOWN_MODEL_PRICES:
-                    self.prices[model] = KNOWN_MODEL_PRICES[model]
-                else:
-                    raise LLMError('현재 모델 목록에서 모델/가격 확인 불가')
-            return self.prices[model]
-
-    def reserve(self, amount):
-        with self.lock:
-            if self.spent + self.reserved + amount > self.limit:
-                raise BudgetExceeded('실행 예산 부족: 로컬 분석으로 전환')
-            self.reserved += amount
-            self.calls += 1
-
-    def settle(self, reserved, actual=None):
-        with self.lock:
-            self.reserved -= reserved
-            # 응답이 없으면 과금 여부를 알 수 없으므로 예약액을 보수적으로 유지한다.
-            self.spent += Decimal(str(actual)) if actual is not None else reserved
-
-    @contextlib.contextmanager
-    def reserve_context(self, amount):
-        self.reserve(amount)
-        state = {'cost': None}
-        try:
-            yield state
-        finally:
-            self.settle(amount, state['cost'])
-
-    def snapshot(self):
-        with self.lock:
-            return {'limit_usd': float(self.limit), 'spent_or_reserved_usd': float(self.spent + self.reserved), 'cloud_calls': self.calls}
-
-
 def call_ollama(prompt, model_name=LOCAL_MODEL, max_tokens=1600, json_mode=False):
     payload = {'model': model_name, 'prompt': prompt, 'stream': False, 'think': False,
                'keep_alive': '10m', 'options': {'temperature': 0, 'num_predict': max_tokens, 'num_ctx': 16384}}
@@ -148,44 +79,32 @@ def call_ollama(prompt, model_name=LOCAL_MODEL, max_tokens=1600, json_mode=False
             raise LLMError('Ollama 연결/응답 실패') from exc
 
 
-def call_openrouter(prompt, api_key, model_name=CLOUD_MODELS[0], budget=None, max_tokens=1800, json_mode=False):
+def call_openrouter(prompt, api_key, model_name=CLOUD_MODELS[0], max_tokens=1800, json_mode=False):
     if not api_key:
         raise LLMError('OPENROUTER_API_KEY 미설정')
-    if budget is not None and not isinstance(budget, RunBudget):
-        budget = RunBudget(budget)
-    budget = budget or RunBudget()
-    input_price, output_price = budget.price(model_name)
-    # UTF-8 바이트 수는 텍스트 토큰 수의 보수적인 상한으로 사용한다.
-    reserve = input_price * (len(prompt.encode('utf-8')) + 256) + output_price * max_tokens
     payload = {'model': model_name, 'messages': [{'role': 'user', 'content': prompt}], 'temperature': 0,
                # effort=low로는 deepseek-v4-flash가 max_tokens를 추론에 다 써 본문이 비거나 끊긴다.
-               'max_tokens': max_tokens, 'reasoning': {'enabled': False},
-               'provider': {'sort': 'throughput', 'max_price': {'prompt': float(input_price * 1000000), 'completion': float(output_price * 1000000), 'request': 0}}}
+               'max_tokens': max_tokens, 'reasoning': {'enabled': False}}
     if json_mode:
         payload['response_format'] = {'type': 'json_object'}
-        payload['provider']['require_parameters'] = True
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     with _CLOUD_LOCK:
         for attempt in range(2):
-            with budget.reserve_context(reserve) as alloc:
-                try:
-                    response = requests.post('https://openrouter.ai/api/v1/chat/completions', headers=headers, json=payload, timeout=(5, 90))
-                    if response.status_code in (429, 500, 502, 503, 504):
-                        if attempt == 0:
-                            alloc['cost'] = 0
-                            time.sleep(min(5, max(1, float(response.headers.get('Retry-After', '1')))))
-                            continue
-                    if response.status_code >= 400:
-                        alloc['cost'] = 0
-                        raise LLMError(f'OpenRouter HTTP {response.status_code}')
-                    data = response.json()
-                    alloc['cost'] = data.get('usage', {}).get('cost')
-                    value = data['choices'][0]['message'].get('content', '')
-                    if not value:
-                        raise LLMError('OpenRouter 빈 응답')
-                    return value
-                except requests.RequestException as exc:
-                    raise LLMError('OpenRouter 연결/응답 실패') from exc
+            try:
+                response = requests.post('https://openrouter.ai/api/v1/chat/completions', headers=headers, json=payload, timeout=(5, 90))
+                if response.status_code in (429, 500, 502, 503, 504):
+                    if attempt == 0:
+                        time.sleep(min(5, max(1, float(response.headers.get('Retry-After', '1')))))
+                        continue
+                if response.status_code >= 400:
+                    raise LLMError(f'OpenRouter HTTP {response.status_code}')
+                data = response.json()
+                value = data['choices'][0]['message'].get('content', '')
+                if not value:
+                    raise LLMError('OpenRouter 빈 응답')
+                return value
+            except requests.RequestException as exc:
+                raise LLMError('OpenRouter 연결/응답 실패') from exc
     raise LLMError('OpenRouter 재시도 실패')
 
 
@@ -198,7 +117,7 @@ def generate_llm_response(prompt, engine_configs, json_mode=False, max_tokens=18
                 return call_ollama(prompt, config.get('model', LOCAL_MODEL), max_tokens, json_mode)
             if provider == 'OpenRouter':
                 return call_openrouter(prompt, config.get('api_key') or get_secret('OPENROUTER_API_KEY'),
-                                       config.get('model', CLOUD_MODELS[0]), config.get('budget'), max_tokens, json_mode)
+                                       config.get('model', CLOUD_MODELS[0]), max_tokens, json_mode)
             if provider in ('Google Gemini', 'NVIDIA NIM'):
                 # 기존 공급자 설정도 유지하되 외부 호출은 명시적으로 선택된 경우만 수행한다.
                 key = config.get('api_key', '')
@@ -218,10 +137,8 @@ def generate_llm_response(prompt, engine_configs, json_mode=False, max_tokens=18
     raise LLMError('; '.join(errors) or '사용 가능한 엔진 없음')
 
 
-def engine_configs(mode='혼합', cloud_model=CLOUD_MODELS[0], local_model=LOCAL_MODEL, budget=None):
+def engine_configs(mode='혼합', cloud_model=CLOUD_MODELS[0], local_model=LOCAL_MODEL):
     local = {'provider': 'Local Ollama', 'model': local_model}
     if mode == '로컬':
         return [local]
-    if budget is not None and not isinstance(budget, RunBudget):
-        budget = RunBudget(budget)
-    return [{'provider': 'OpenRouter', 'model': cloud_model, 'api_key': get_secret('OPENROUTER_API_KEY'), 'budget': budget or RunBudget()}, local]
+    return [{'provider': 'OpenRouter', 'model': cloud_model, 'api_key': get_secret('OPENROUTER_API_KEY')}, local]

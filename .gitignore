@@ -12,3 +12,5 @@ scratch/
 graphify-out/
 .streamlit/secrets.toml
 .agents/teamwork/
+
+.claude/launch.json

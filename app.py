@@ -24,7 +24,6 @@ from hwp_parser import process_folder_documents
 from llm_manager import (
     CLOUD_MODELS,
     LOCAL_MODELS,
-    RunBudget,
     engine_configs,
     get_secret,
 )
@@ -379,27 +378,13 @@ def show_bid_detail_modal(row):
         st.session_state["modal_target_bid"] = None
         st.rerun()
 
-def safe_parse_run_budget(raw_val, default: float = 1.0) -> float:
-    try:
-        val = float(raw_val)
-        if not math.isfinite(val) or val < 0.0:
-            return default
-        return min(100.0, max(0.0, val))
-    except (ValueError, TypeError):
-        return default
-
-
 # --- 1차/2차/3차 엔진 구성 함수 ---
 def get_configured_engine_list():
-    budget_val = safe_parse_run_budget(globals().get("run_budget", get_setting("run_budget", "1.0")))
-    try:
-        budget_obj = RunBudget(budget_val)
-    except (ValueError, TypeError, ArithmeticError):
-        budget_obj = RunBudget(1.0)
-    return engine_configs(globals().get("analysis_mode", get_setting("analysis_mode", "혼합")),
-                          globals().get("cloud_model", get_setting("cloud_model", CLOUD_MODELS[0])),
-                          globals().get("local_model", get_setting("local_model", LOCAL_MODELS[0])),
-                          budget_obj)
+    return engine_configs(
+        globals().get("analysis_mode", get_setting("analysis_mode", "혼합")),
+        globals().get("cloud_model", get_setting("cloud_model", CLOUD_MODELS[0])),
+        globals().get("local_model", get_setting("local_model", LOCAL_MODELS[0])),
+    )
 
 # --- 사이드바 설정 영역 ---
 with st.sidebar:
@@ -517,13 +502,8 @@ if run_crawl:
     else:
         pri_kw = get_setting("pri_kw", "통신").strip()
         sec_kw = get_setting("sec_kw", "네트워크, 보안").strip()
-        run_budget = safe_parse_run_budget(get_setting("run_budget", "1.0"))
         cloud_model = get_setting("cloud_model", CLOUD_MODELS[0])
         local_model = get_setting("local_model", LOCAL_MODELS[0])
-        try:
-            budget = RunBudget(run_budget)
-        except (ValueError, TypeError, ArithmeticError):
-            budget = RunBudget(1.0)
         stats = {}
         try:
             with st.spinner(f"[{selected_site_name}] 목록 확인·분류·첨부 수집 중입니다..."):
@@ -537,9 +517,8 @@ if run_crawl:
                     progress_bar.progress(done / total)
                     status_text.text(f"[{done}/{total}] {item['제목'][:30]}: {item.get('analysis_status', '미확인')}")
                 _, analysis_stats = process_bids(bids, selected_categories,
-                    engine_configs(analysis_mode, cloud_model, local_model, budget), pri_kw, sec_kw, on_progress)
+                    engine_configs(analysis_mode, cloud_model, local_model), pri_kw, sec_kw, on_progress)
                 stats.update(analysis_stats)
-            stats.update(budget.snapshot())
             st.session_state["last_run_metrics"] = stats
             st.rerun()
         except Exception as error:  # UI 경계: 원인별 안내로 바꿔 보여 준다
@@ -548,17 +527,12 @@ if run_crawl:
 if "last_run_metrics" in st.session_state and isinstance(st.session_state["last_run_metrics"], dict):
     m = st.session_state["last_run_metrics"]
     coll = m.get("collected", 0)
-    try:
-        spent = float(m.get("spent_or_reserved_usd", 0.0) or 0.0)
-    except (ValueError, TypeError):
-        spent = 0.0
     succ = m.get("success", 0)
-    with st.expander(f"최근 수집·분석 결과 (수집 {coll}건 · 분석 성공 {succ}건 · 비용 ${spent:.4f})", expanded=False):
-        c1, c2, c3, c4 = st.columns(4)
+    with st.expander(f"최근 수집·분석 결과 (수집 {coll}건 · 분석 성공 {succ}건)", expanded=False):
+        c1, c2, c3 = st.columns(3)
         c1.metric("확인 공고", f"{m.get('listed', 0)}건")
         c2.metric("수집 대상", f"{coll}건", f"첨부 {m.get('downloaded_files', 0)}개")
         c3.metric("분석 성공", f"{succ}건", f"보류 {m.get('pending_review', 0)}건")
-        c4.metric("사용 예산", f"${spent:.4f}", f"호출 {m.get('cloud_calls', 0)}회")
         st.caption("상세 통계 로그 (JSON):")
         st.json(m)
 

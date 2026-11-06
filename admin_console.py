@@ -23,7 +23,6 @@ from db import (
 from llm_manager import (
     CLOUD_MODELS,
     LOCAL_MODELS,
-    RunBudget,
     engine_configs,
     get_secret,
     save_secrets,
@@ -41,17 +40,6 @@ def login_allowed(expected, typed):
     return bool(expected) and bool(str(expected).strip()) and typed is not None and str(typed) == str(expected)
 
 
-def get_safe_run_budget(default: float = 1.0, min_val: float = 0.0, max_val: float = 100.0) -> float:
-    """DB에서 run_budget 설정을 안전하게 읽어와 NaN/무한대를 필터링하고 [min_val, max_val] 범위로 클램핑한다."""
-    try:
-        raw_val = float(get_setting("run_budget", str(default)))
-        if not math.isfinite(raw_val):
-            return default
-        return max(min_val, min(max_val, raw_val))
-    except (ValueError, TypeError):
-        return default
-
-
 def get_bid_r2_folder_key(folder_p: str) -> str:
     """공고 로컬 경로에서 R2 폴더 키('data/<folder_name>')를 안전하게 추출한다."""
     if not folder_p:
@@ -61,8 +49,8 @@ def get_bid_r2_folder_key(folder_p: str) -> str:
     return f"data/{folder_bname}" if folder_bname else ""
 
 
-def render_model_and_budget_tab():
-    """[탭 1] AI 모델 연결 & 예산 (Model & Budget)"""
+def render_model_tab():
+    """[탭 1] AI 모델 연결 (Model & Credentials)"""
     st.markdown("### 기본 분석 모델 설정 (Ollama & OpenRouter)")
     st.caption("수집된 공고의 상세 요약 및 질의응답에 사용할 AI 모델을 설정합니다.")
     with st.form("admin_model_selection_form"):
@@ -103,23 +91,6 @@ def render_model_and_budget_tab():
         if st.form_submit_button("연결 설정 저장"):
             save_secrets({"OPENROUTER_API_KEY": openrouter_key})
             st.success("로컬 연결 설정을 저장했습니다.")
-
-    st.markdown("---")
-    st.markdown("### 실행당 클라우드 예산 설정")
-    st.caption("수집 및 분석 실행 1회당 허용할 최대 클라우드 API 지출 한도를 설정합니다.")
-    with st.form("admin_budget_form"):
-        current_budget = get_safe_run_budget(default=1.0, min_val=0.0, max_val=100.0)
-        budget_val = st.number_input(
-            "실행당 클라우드 예산 (USD)",
-            min_value=0.0,
-            max_value=100.0,
-            value=current_budget,
-            step=0.5,
-            key="admin_run_budget",
-        )
-        if st.form_submit_button("예산 설정 저장"):
-            save_setting("run_budget", str(budget_val))
-            st.success(f"실행당 클라우드 예산이 {budget_val:.1f} USD로 저장되었습니다.")
 
     st.markdown("---")
     st.markdown("### 적합도 평가 가중치 키워드 설정")
@@ -230,20 +201,15 @@ def render_maintenance_and_benchmark_tab():
         if not reanalyze_cats:
             st.warning("재분석할 분야를 하나 이상 선택해 주세요.")
         else:
-            budget_limit = get_safe_run_budget(default=1.0, min_val=0.0, max_val=100.0)
-            try:
-                budget = RunBudget(budget_limit)
-            except (ValueError, TypeError, ArithmeticError):
-                budget = RunBudget(1.0)
             cloud_model = get_setting("cloud_model", CLOUD_MODELS[0])
             local_model = get_setting("local_model", LOCAL_MODELS[0])
             analysis_mode = get_setting("analysis_mode", "혼합")
             with st.spinner("선택 분야의 기존 첨부를 분석합니다..."):
                 _, stats = reanalyze_existing(
-                    engine_configs(analysis_mode, cloud_model, local_model, budget),
+                    engine_configs(analysis_mode, cloud_model, local_model),
                     reanalyze_cats,
                 )
-            st.session_state["last_run_metrics"] = dict(stats, **budget.snapshot())
+            st.session_state["last_run_metrics"] = stats
             st.success("선택 분야 기존 공고 재분석이 완료되었습니다.")
             st.rerun()
 
@@ -278,9 +244,8 @@ def render_maintenance_and_benchmark_tab():
             if not selected_benchmark_models:
                 st.warning("비교 실행할 모델을 하나 이상 선택해 주세요.")
             else:
-                run_budget = get_safe_run_budget(default=1.0, min_val=0.0, max_val=100.0)
                 with st.spinner("한글 합성 RFP 12건으로 모델을 비교합니다..."):
-                    run_benchmark(selected_benchmark_models, run_budget, output=report)
+                    run_benchmark(selected_benchmark_models, output=report)
                 st.success("모델 비교 벤치마크 실행 완료!")
                 st.rerun()
 
@@ -384,14 +349,14 @@ def show_admin_console_modal(expected_password=None):
         return
 
     tab_model, tab_sites, tab_maint, tab_taxonomy = st.tabs([
-        "AI 모델 연결 & 예산",
+        "AI 모델 연결",
         "수집 사이트 & Cloudflare R2 백업",
         "데이터 재처리 & 벤치마크",
         "분류 사전 & 공고 삭제 센터",
     ])
 
     with tab_model:
-        render_model_and_budget_tab()
+        render_model_tab()
 
     with tab_sites:
         render_sites_and_r2_tab()

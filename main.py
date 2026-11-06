@@ -6,7 +6,7 @@ from pathlib import Path
 from classification import CATEGORIES, DEFAULT_CATEGORIES
 from crawler import crawl_and_download_bids_by_date
 from db import init_db, load_all_sites
-from llm_manager import RunBudget, engine_configs, CLOUD_MODELS, LOCAL_MODEL
+from llm_manager import engine_configs, CLOUD_MODELS, LOCAL_MODEL
 from pipeline import process_bids, backfill_existing, reanalyze_existing
 
 
@@ -24,7 +24,6 @@ def main():
     parser.add_argument('--mode', choices=['혼합','로컬','OpenRouter'], default='혼합')
     parser.add_argument('--cloud-model', default=CLOUD_MODELS[0])
     parser.add_argument('--local-model', default=LOCAL_MODEL)
-    parser.add_argument('--budget', type=float, default=1)
     parser.add_argument('--force-refresh', action='store_true')
     parser.add_argument('--backfill', action='store_true')
     parser.add_argument('--reanalyze', action='store_true')
@@ -40,8 +39,7 @@ def main():
         parser.error('세부 항목/업무 이름을 분류 사전에서 확인해 주세요')
     if args.backfill:
         print(json.dumps(backfill_existing(progress=lambda n,t,r: print(f'{n}/{t} 문서 재추출·분류')), ensure_ascii=False));return
-    budget = RunBudget(args.budget)
-    engines = engine_configs(args.mode, args.cloud_model, args.local_model, budget)
+    engines = engine_configs(args.mode, args.cloud_model, args.local_model)
     if args.confirmed_ids:
         from pipeline import process_confirmed
         metrics=process_confirmed(args.confirmed_ids,str(Path(__file__).parent/'data'),engines)
@@ -57,7 +55,6 @@ def main():
             selected_solutions=solutions, selected_work=work, include_uncertain=args.include_uncertain)
         _, stats = process_bids(items, categories, engines, progress=lambda n,t,r: print(f'{n}/{t}: {r.get("analysis_status")}'))
         metrics.update(stats)
-    metrics.update(budget.snapshot())
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
 
 
