@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 def extract_date_from_text(text: str) -> date | None:
     """

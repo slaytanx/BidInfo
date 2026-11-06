@@ -1,6 +1,5 @@
 """목록·분류·첨부 수집을 분리한 은행별 공개 게시판 수집기."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
 import hashlib
 import html
 import json

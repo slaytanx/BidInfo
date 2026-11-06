@@ -1,9 +1,8 @@
 """화면과 CLI가 공유하는 수집 결과 처리 및 기존 공고 보강."""
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import json
 import time
-from classification import classify_rules, classify_local, should_collect, CATEGORIES
+from classification import classify_rules, classify_local, should_collect
 from db import save_bid, load_all_bids, update_enrichment, finish_manual_collection
 from hwp_parser import process_folder_result
 from ollama_summary import analyze_bid_with_ollama
