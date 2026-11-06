@@ -423,6 +423,26 @@ class BudgetAnalysisTests(unittest.TestCase):
             answer = analysis.answer_bid_question('사업', '실제 문서 본문', '마감일?')
         self.assertIn('처리 실패', answer)
 
+    def test_question_answer_filters_top_chunks_on_long_document(self):
+        # 4개 청크(>3개) 이상의 긴 문서에서 질문 키워드가 포함된 상위 관련 청크만 선별 호출
+        chunk1 = "일반 소개문입니다. " * 800
+        chunk2 = "마감일시 안내: 제안서 접수 마감은 2026-11-20 17:00까지입니다. " * 400
+        chunk3 = "기타 사항입니다. " * 800
+        chunk4 = "첨부 서식 안내입니다. " * 800
+        long_doc = chunk1 + chunk2 + chunk3 + chunk4
+
+        calls = []
+        def mock_generate(prompt, *args, **kwargs):
+            calls.append(prompt)
+            if "2026-11-20" in prompt:
+                return '{"answer":"마감일시는 2026-11-20 17:00입니다.","evidence":[{"quote":"2026-11-20 17:00까지입니다.","location":"p.2"}]}'
+            return '{"answer":"확인 불가","evidence":[]}'
+
+        with patch.object(analysis, 'generate_llm_response', side_effect=mock_generate):
+            answer = analysis.answer_bid_question('사업', long_doc, '마감일시 언제인가요?')
+        self.assertIn("2026-11-20 17:00", answer)
+        self.assertLessEqual(len(calls), 3)
+
 
 class DBUpgradeTests(unittest.TestCase):
     def setUp(self):
@@ -475,6 +495,16 @@ class PageTests(unittest.TestCase):
         with patch.object(llm.requests, 'post', side_effect=[busy, okay]), patch.object(llm.time, 'sleep'):
             res = llm.call_openrouter('시험', 'synthetic-key', max_tokens=100)
         self.assertEqual(res, '{"ok":true}')
+
+    def test_cloud_retry_on_429_with_http_date_retry_after(self):
+        # HTTP-Date 포맷의 Retry-After 헤더 반환 시 ValueError 크래시 없이 1초 기본값으로 안전 재시도
+        busy = Mock(status_code=429, headers={'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT'})
+        okay = Mock(status_code=200)
+        okay.json.return_value = {'choices': [{'message': {'content': '{"ok":true}'}}]}
+        with patch.object(llm.requests, 'post', side_effect=[busy, okay]), patch.object(llm.time, 'sleep') as mock_sleep:
+            res = llm.call_openrouter('시험', 'synthetic-key', max_tokens=100)
+        self.assertEqual(res, '{"ok":true}')
+        mock_sleep.assert_called_once_with(1.0)
 
     def test_openrouter_400_fatal_no_retry(self):
         fatal = Mock(status_code=400)

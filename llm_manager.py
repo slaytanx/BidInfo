@@ -94,7 +94,12 @@ def call_openrouter(prompt, api_key, model_name=CLOUD_MODELS[0], max_tokens=1800
                 response = requests.post('https://openrouter.ai/api/v1/chat/completions', headers=headers, json=payload, timeout=(5, 90))
                 if response.status_code in (429, 500, 502, 503, 504):
                     if attempt == 0:
-                        time.sleep(min(5, max(1, float(response.headers.get('Retry-After', '1')))))
+                        retry_after = response.headers.get('Retry-After', '1')
+                        try:
+                            delay = min(5.0, max(1.0, float(retry_after)))
+                        except (ValueError, TypeError):
+                            delay = 1.0
+                        time.sleep(delay)
                         continue
                 if response.status_code >= 400:
                     raise LLMError(f'OpenRouter HTTP {response.status_code}')

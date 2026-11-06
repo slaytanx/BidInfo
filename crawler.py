@@ -144,6 +144,7 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
         url = 'https://tipartner.hanati.co.kr/spLogin.do'
 
     hana_csrf = ''
+    previous = ()
     with _session() as session:
         for page in range(1, max_pages + 1):
             if is_nh:
