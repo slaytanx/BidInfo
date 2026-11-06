@@ -8,7 +8,7 @@ import streamlit as st
 
 from admin_console import show_admin_console_modal
 from classification import CATEGORIES, DEFAULT_CATEGORIES
-from crawler import crawl_and_download_bids_by_date
+from crawler import crawl_and_download_bids_by_date, sanitize_filename
 from date_utils import calculate_d_day
 from db import (
     DB_PATH,
@@ -30,6 +30,11 @@ from llm_manager import (
 from ollama_summary import answer_bid_question, generate_rfp_one_pager
 from pipeline import process_bids
 from r2_storage import upload_db_to_r2
+from report_export import (
+    generate_bid_review_html,
+    generate_bid_review_markdown,
+    generate_excel_export,
+)
 from taxonomy import taxonomy_options
 from taxonomy_ui import show_review_queue
 from ui_errors import show_error
@@ -68,6 +73,12 @@ def cached_bids(stamp):
 @st.cache_data(show_spinner=False)
 def cached_csv(stamp):
     return pd.DataFrame(cached_bids(stamp)).to_csv(index=False).encode('utf-8-sig')
+
+
+@st.cache_data(show_spinner=False)
+def cached_excel(stamp):
+    bids = cached_bids(stamp)
+    return generate_excel_export(bids) if bids else b""
 
 
 @st.cache_data(show_spinner=False)
@@ -374,6 +385,31 @@ def show_bid_detail_modal(row):
         st.markdown(f"**필수 제출 서류**: `{row.get('required_docs', '상세참조')}`")
         st.markdown(f"**참가 자격 요건**: `{row.get('qualifications', '상세참조')}`")
 
+    st.markdown("---")
+    st.markdown("#### 📥 제안 검토 보고서 내보내기")
+    safe_title = sanitize_filename(row.get("title", "공고"))[:30]
+    row_dict = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+    col_rep1, col_rep2 = st.columns(2)
+    with col_rep1:
+        st.download_button(
+            label="📄 마크다운 보고서 (.md)",
+            data=generate_bid_review_markdown(row_dict),
+            file_name=f"제안검토_{safe_title}.md",
+            mime="text/markdown",
+            width="stretch",
+            key=f"dl_md_{row_dict.get('bid_id', 'modal')}"
+        )
+    with col_rep2:
+        st.download_button(
+            label="🌐 인쇄용 보고서 (.html)",
+            data=generate_bid_review_html(row_dict),
+            file_name=f"제안검토_{safe_title}.html",
+            mime="text/html",
+            width="stretch",
+            key=f"dl_html_{row_dict.get('bid_id', 'modal')}"
+        )
+
+    st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
     if st.button("닫기", type="primary", width="stretch"):
         st.session_state["modal_target_bid"] = None
         st.rerun()
@@ -470,21 +506,34 @@ with st.sidebar:
 
     # --- 3단계: 실행 ---
     st.subheader("3단계: 실행")
-    col_b1, col_b2 = st.columns(2)
+    col_b1, col_b2, col_b3 = st.columns([1.1, 1.0, 0.9])
     with col_b1:
         run_crawl = st.button("수집 시작", type="primary", width="stretch")
     with col_b2:
         if cached_bids(db_stamp()):
+            excel_export = cached_excel(db_stamp())
+            st.download_button(
+                label="📊 엑셀",
+                data=excel_export,
+                file_name=f"bid_export_{today}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                help="서식이 적용된 전문 엑셀 파일로 전체 공고를 다운로드합니다."
+            )
+        else:
+            st.button("📊 엑셀", disabled=True, width="stretch")
+    with col_b3:
+        if cached_bids(db_stamp()):
             csv_export = cached_csv(db_stamp())
             st.download_button(
-                label="CSV 다운",
+                label="CSV",
                 data=csv_export,
                 file_name=f"bid_export_{today}.csv",
                 mime="text/csv",
                 width="stretch"
             )
         else:
-            st.button("CSV 다운", disabled=True, width="stretch")
+            st.button("CSV", disabled=True, width="stretch")
 
 # 💡 세션 상태에 따라 시크릿 어드민 모달 호출
 if st.session_state["show_admin_modal"]:
@@ -610,9 +659,23 @@ if not filtered_df.empty:
     filtered_df["num_int"] = pd.to_numeric(filtered_df["num"], errors='coerce').fillna(0)
     filtered_df = filtered_df.sort_values(by=["reg_date", "num_int"], ascending=[False, False])
 
-col_cnt, col_reset = st.columns([3, 1.4], vertical_alignment="center")
+col_cnt, col_exp_btn, col_reset = st.columns([2.4, 1.4, 1.2], vertical_alignment="center")
 col_cnt.caption(f"{len(filtered_df)} / {len(df)}건 표시")
-col_reset.button("필터 초기화", on_click=reset_filters, width="stretch")
+with col_exp_btn:
+    if not filtered_df.empty:
+        filtered_dicts = filtered_df.to_dict("records")
+        st.download_button(
+            label="📥 목록 엑셀 저장",
+            data=generate_excel_export(filtered_dicts),
+            file_name=f"bids_filtered_{today}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+            help="현재 필터가 적용된 검색 결과 공고 목록을 엑셀로 다운로드합니다."
+        )
+    else:
+        st.button("📥 목록 엑셀 저장", disabled=True, width="stretch")
+with col_reset:
+    st.button("필터 초기화", on_click=reset_filters, width="stretch")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "공고 목록",
@@ -738,6 +801,29 @@ with tab2:
                 if rfp_state_key in st.session_state:
                     st.markdown("#### RFP 1장 요약 리포트:")
                     st.info(st.session_state[rfp_state_key])
+
+                st.markdown("---")
+                col_tab2_d1, col_tab2_d2 = st.columns(2)
+                row_dict_t2 = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+                safe_t2 = sanitize_filename(row.get("title", "공고"))[:25]
+                with col_tab2_d1:
+                    st.download_button(
+                        label="📄 제안 검토 보고서 (.md)",
+                        data=generate_bid_review_markdown(row_dict_t2),
+                        file_name=f"제안검토_{safe_t2}.md",
+                        mime="text/markdown",
+                        width="stretch",
+                        key=f"t2_md_{row['bid_id']}"
+                    )
+                with col_tab2_d2:
+                    st.download_button(
+                        label="🌐 인쇄용 보고서 (.html)",
+                        data=generate_bid_review_html(row_dict_t2),
+                        file_name=f"제안검토_{safe_t2}.html",
+                        mime="text/html",
+                        width="stretch",
+                        key=f"t2_html_{row['bid_id']}"
+                    )
         if len(filtered_df) > page_limit:
             st.caption(f"{page_limit} / {len(filtered_df)}건 표시 중")
             if st.button("30건 더 보기", key="tab2_more"):
