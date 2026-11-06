@@ -1,4 +1,5 @@
 import contextlib
+from datetime import date
 from decimal import Decimal
 import io
 import json
@@ -575,6 +576,137 @@ class AnalysisProgressUITests(unittest.TestCase):
             crawl_btn.click()
             app.run(timeout=30)
             self.assertFalse(app.exception)
+
+
+class FinancialCustomScraperTests(unittest.TestCase):
+    def test_shinhands_list_bids_paging_and_parsing(self):
+        page1_html = """
+        <tbody>
+            <tr>
+                <td>82</td>
+                <td class="subject"><a href="/insight/business-notice?page=0&cmd=view&id=297">신한베트남은행 카드 Master 브랜드 RBA 구축</a></td>
+                <td>2025.01.23 ~ 2025.01.31</td>
+                <td>2025.01.23</td>
+                <td>1,234</td>
+            <tr>
+        </tbody>
+        """
+        page2_html = """
+        <tbody>
+            <tr>
+                <td>81</td>
+                <td class="subject"><a href="/insight/business-notice?page=2&cmd=view&id=280">소그룹사 베어메탈 수탁시스템 DB서버 도입</a></td>
+                <td>2024.11.01 ~ 2024.11.08</td>
+                <td>2024.11.01</td>
+                <td>567</td>
+            <tr>
+        </tbody>
+        """
+        resp1 = Mock(text=page1_html, status_code=200)
+        resp2 = Mock(text=page2_html, status_code=200)
+        empty_resp = Mock(text="<tbody></tbody>", status_code=200)
+
+        with patch.object(crawler, '_request', side_effect=[resp1, resp2, empty_resp]):
+            bids = crawler.list_bids(
+                'https://www.shinhands.co.kr/insight/disclosure',
+                date(2024, 1, 1),
+                date(2025, 12, 31),
+                site_name='신한DS 사업공시'
+            )
+            self.assertEqual(len(bids), 2)
+            self.assertEqual(bids[0]['게시물ID'], '297')
+            self.assertEqual(bids[0]['계열사/조직'], '신한은행')
+            self.assertEqual(bids[0]['원본URL'], 'https://www.shinhands.co.kr/insight/business-notice?cmd=view&id=297')
+            self.assertEqual(bids[1]['게시물ID'], '280')
+            self.assertEqual(bids[1]['계열사/조직'], '신한DS')
+
+    def test_shinhands_attachments_extraction(self):
+        detail_html = """
+        <div class="fileList">
+            <div><a class="btn-board-file-download" data-db="1" data-id="287" data-no="0">입찰공고문_RBA구축.docx</a></div>
+        </div>
+        """
+        files = crawler._attachments(detail_html, 'https://www.shinhands.co.kr/insight/business-notice?cmd=view&id=287')
+        self.assertEqual(len(files), 1)
+        method, url, payload, name = files[0]
+        self.assertEqual(method, 'GET')
+        self.assertIn('db=1&id=287&no=0', url)
+        self.assertIsNone(payload)
+        self.assertEqual(name, '입찰공고문_RBA구축.docx')
+
+    def test_hanati_list_bids_paging_and_parsing(self):
+        login_html = '<meta name="_csrf" content="token123" />'
+        page1_html = """
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td><a data-id="im01O42H" data-no="im01O42H" onclick="javascript:noticeLink(this)">[입찰공고] 하나증권 노후 개발스토리지 교체</a></td>
+                <td>일반경쟁</td>
+                <td>담당자</td>
+                <td>2026-11-05</td>
+            </tr>
+        </tbody>
+        """
+        empty_html = "<tbody></tbody>"
+        resp_login = Mock(text=login_html, status_code=200)
+        resp_p1 = Mock(text=page1_html, status_code=200)
+        resp_empty = Mock(text=empty_html, status_code=200)
+
+        with patch.object(crawler, '_request', side_effect=[resp_login, resp_p1, resp_empty]):
+            bids = crawler.list_bids(
+                'https://www.hanati.co.kr',
+                date(2026, 1, 1),
+                date(2026, 12, 31),
+                site_name='하나금융티아이 공지사항'
+            )
+            self.assertEqual(len(bids), 1)
+            self.assertEqual(bids[0]['게시물ID'], 'im01O42H')
+            self.assertEqual(bids[0]['계열사/조직'], '하나증권')
+            self.assertEqual(bids[0]['원본URL'], 'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do?post_no=im01O42H')
+
+    def test_hanati_attachments_extraction(self):
+        detail_html = """
+        <ul id="att_list">
+            <li><a data-arg="att999" onclick="downloadAttFile(this)">3. 입찰세부내역.pdf</a></li>
+        </ul>
+        <input type="hidden" name="_csrf" value="detail_token_456" />
+        """
+        files = crawler._attachments(detail_html, 'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do?post_no=abc')
+        self.assertEqual(len(files), 1)
+        method, url, payload, name = files[0]
+        self.assertEqual(method, 'POST')
+        self.assertEqual(url, 'https://tipartner.hanati.co.kr/sp/mn/bidding/upload/download.do')
+        self.assertEqual(payload, {'id': 'att999', '_csrf': 'detail_token_456'})
+        self.assertEqual(name, '3. 입찰세부내역.pdf')
+
+    def test_hanati_collect_item_dispatches_post(self):
+        item = {
+            '게시물ID': 'post_hana_1',
+            '수집사이트': '하나금융티아이 공지사항',
+            '제목': '하나은행 클라우드 인프라 구축',
+            '원본URL': 'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do?post_no=post_hana_1'
+        }
+        login_html = '<meta name="_csrf" content="token_login" />'
+        detail_html = """
+        <html>
+            <body>
+                [입찰공고] 하나은행 클라우드 인프라 구축 공고문 내용입니다.
+                <input type="hidden" name="_csrf" value="token_login" />
+            </body>
+        </html>
+        """
+        resp_login = Mock(text=login_html, status_code=200)
+        resp_detail = Mock(text=detail_html, status_code=200)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(crawler, '_request', side_effect=[resp_login, resp_detail]) as mock_req, \
+             patch.object(crawler, 'classify_local', return_value={'certain': True, 'tags': ['인프라'], 'solution_tags': [], 'work_tags': [], 'reason': '테스트'}):
+            res = crawler._collect_item(item, tmp, ['인프라'], local_classifier=True, force_refresh=False)
+            self.assertIsNotNone(res)
+            # Second call should be POST with post_no and _csrf
+            call2 = mock_req.call_args_list[1]
+            self.assertEqual(call2[0][1], 'POST')
+            self.assertEqual(call2[1].get('data'), {'post_no': 'post_hana_1', '_csrf': 'token_login'})
 
 
 if __name__ == '__main__':unittest.main()

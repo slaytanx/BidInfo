@@ -80,11 +80,13 @@ def init_db():
         defaults = [('NH농협 입찰공고', 'https://www.nonghyup.com/ecenter/bid/bidList.do'),
                     ('KB국민은행', 'https://omoney.kbstar.com/quics?page=C018592'),
                     ('농협정보시스템', 'https://www.nonghyupit.com/nonghyupit/4485/subview.do'),
-                    ('신한DS 사업공시', 'https://www.shinhands.co.kr/insight/disclosure'),
+                    ('신한DS 사업공시', 'https://www.shinhands.co.kr/insight/business-notice'),
                     ('신한은행 새소식', 'https://www.shinhan.com'),
                     ('하나은행 새소식', 'https://www.kebhana.com'),
-                    ('하나금융티아이 공지사항', 'https://www.hanati.co.kr')]
+                    ('하나금융티아이 공지사항', 'https://tipartner.hanati.co.kr/spLogin.do')]
         conn.executemany('INSERT OR IGNORE INTO sites(site_name,site_url) VALUES (?,?)', defaults)
+        conn.execute("UPDATE sites SET site_url='https://www.shinhands.co.kr/insight/business-notice' WHERE site_name='신한DS 사업공시' AND site_url='https://www.shinhands.co.kr/insight/disclosure'")
+        conn.execute("UPDATE sites SET site_url='https://tipartner.hanati.co.kr/spLogin.do' WHERE site_name='하나금융티아이 공지사항' AND site_url='https://www.hanati.co.kr'")
         conn.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         from taxonomy import seed_taxonomy, legacy_classification, DEFAULT_DOMAINS
         seed_taxonomy(conn)

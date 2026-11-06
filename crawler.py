@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from urllib.parse import urljoin, urlparse, unquote
+from urllib.parse import urljoin, urlparse, unquote, parse_qs
 import requests
 
 try:
@@ -37,9 +37,23 @@ def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|\x00-\x1f]', '_', name).strip('. ')[:160] or 'attachment'
 
 
-def extract_org_from_title(title):
+def extract_org_from_title(title, default_org=None):
     match = re.search(r'\((은행|손해|생명|증권|중앙회|공통|유통|자산신탁|KB|국민|농협|신한|하나)\)', title)
-    return match.group(1) if match else 'KB국민은행' if '국민' in title else '신한은행' if '신한' in title else '하나은행' if '하나' in title else 'NH농협'
+    if match:
+        return match.group(1)
+    for kw, org in [
+        ('하나증권', '하나증권'), ('하나카드', '하나카드'), ('하나금융티아이', '하나금융TI'), ('하나TI', '하나금융TI'), ('하나은행', '하나은행'),
+        ('신한투자증권', '신한투자증권'), ('신한카드', '신한카드'), ('신한DS', '신한DS'), ('신한은행', '신한은행'),
+        ('농협정보시스템', '농협정보시스템'), ('농협은행', 'NH농협은행'),
+        ('국민은행', 'KB국민은행'), ('KB', 'KB국민은행')
+    ]:
+        if kw in title:
+            return org
+    if '국민' in title: return 'KB국민은행'
+    if '신한' in title: return '신한은행'
+    if '하나' in title: return '하나은행'
+    if '농협' in title: return 'NH농협'
+    return default_org or 'NH농협'
 
 
 def _base_domain(host: str) -> str:
@@ -117,9 +131,19 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
         raise ValueError('시작일이 종료일보다 늦습니다')
     found, seen = [], set()
     markup = ''
-    is_nh = 'nonghyup.com' in urlparse(url).netloc
-    is_nhit = 'nonghyupit.com' in urlparse(url).netloc
-    is_kb = 'kbstar.com' in urlparse(url).netloc
+    netloc = urlparse(url).netloc
+    is_nh = 'nonghyup.com' in netloc
+    is_nhit = 'nonghyupit.com' in netloc
+    is_kb = 'kbstar.com' in netloc
+    is_shinds = 'shinhands.co.kr' in netloc or '신한DS' in site_name
+    is_hanati = 'hanati.co.kr' in netloc or '하나금융티아이' in site_name
+
+    if is_shinds and ('/insight/disclosure' in url or url.endswith('shinhands.co.kr') or url.endswith('shinhands.co.kr/')):
+        url = 'https://www.shinhands.co.kr/insight/business-notice'
+    if is_hanati and ('tipartner' not in url):
+        url = 'https://tipartner.hanati.co.kr/spLogin.do'
+
+    hana_csrf = ''
     with _session() as session:
         for page in range(1, max_pages + 1):
             if is_nh:
@@ -141,23 +165,41 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
                 payload['bbsMode'] = 'list'
                 action_url = _attrs(attributes).get('action', '')
                 response = _request(session, 'POST', urljoin(url, action_url), data=payload)
+            elif is_shinds:
+                p_param = 0 if page == 1 else page
+                sh_params = {'page': str(p_param)}
+                if keyword:
+                    sh_params['stx'] = keyword
+                    sh_params['sfl'] = 'all'
+                response = _request(session, 'GET', 'https://www.shinhands.co.kr/insight/business-notice', params=sh_params)
+            elif is_hanati:
+                if not hana_csrf:
+                    r_login = _request(session, 'GET', 'https://tipartner.hanati.co.kr/spLogin.do')
+                    c_m = re.search(r'name="_csrf"\s+content="([^"]+)"', r_login.text)
+                    hana_csrf = c_m.group(1) if c_m else ''
+                response = _request(session, 'POST', 'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do', data={'page': str(page), '_csrf': hana_csrf}, headers={'X-CSRF-TOKEN': hana_csrf} if hana_csrf else None)
             else:
                 response = _request(session, 'GET', url)
             markup = response.text
             if access is not None:
                 access['list'] = '공개 목록 접근 성공'
             page_ids, page_dates = [], []
-            for row in re.findall(r'<tr\b[^>]*>(.*?)</tr>', markup, re.S | re.I):
+            if is_shinds:
+                tbody = re.search(r'<tbody>(.*?)</tbody>', markup, re.S | re.I)
+                raw_rows = re.split(r'<tr\b[^>]*>', tbody.group(1) if tbody else markup, flags=re.I)
+            else:
+                raw_rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', markup, re.S | re.I)
+
+            for row in raw_rows:
                 cells = re.findall(r'<td\b[^>]*>(.*?)</td>', row, re.S | re.I)
                 if len(cells) < 2:
                     continue
                 title_cell = cells[1]
                 anchors = list(_links(title_cell))
-                if not anchors:
-                    continue
-                href, title = anchors[0]
+                href = anchors[0][0] if anchors else ''
+                title = anchors[0][1] if anchors else ''
                 registered = next((d for cell in cells[2:] if (d := extract_date_from_text(_text(cell)))), None)
-                if not registered or not title:
+                if not registered:
                     continue
                 raw_id = ''
                 if is_nh:
@@ -166,7 +208,7 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
                         continue
                     raw_id = match.group(1)
                     origin = urljoin(url, '/ecenter/bid/bidView.do') + '?intgBsnBlbdGrpC=BBSMSTR_000000000019&blbdSqno=' + raw_id
-                    org = extract_org_from_title(title)
+                    org = extract_org_from_title(title, 'NH농협')
                 elif is_nhit:
                     match = re.search(r'/675/(\d+)/artclView', href)
                     if not match:
@@ -179,10 +221,30 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
                     raw_id = match.group(1)
                     origin = f'https://omoney.kbstar.com/quics?page=C018592&cc=b031439:b031439&boardId=648&compId=b031439&articleId={raw_id}&bbsMode=view'
                     org = 'KB국민은행'
+                elif is_shinds:
+                    match = re.search(r'id=(\d+)', href)
+                    if not match:
+                        continue
+                    raw_id = match.group(1)
+                    origin = f'https://www.shinhands.co.kr/insight/business-notice?cmd=view&id={raw_id}'
+                    org = extract_org_from_title(title, '신한DS')
+                elif is_hanati:
+                    m_hana = re.search(r'<a\b([^>]*)>(.*?)</a>', title_cell, re.S | re.I)
+                    if not m_hana:
+                        continue
+                    attrs = _attrs(m_hana.group(1))
+                    raw_id = attrs.get('data-id') or attrs.get('data-no')
+                    if not raw_id:
+                        continue
+                    title = _text(m_hana.group(2)).strip()
+                    origin = f'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do?post_no={raw_id}'
+                    org = extract_org_from_title(title, '하나금융TI')
                 else:
                     if not href or href.startswith(('javascript:', '#')):
                         continue
                     origin = urljoin(url, href); raw_id = hashlib.sha256(origin.encode()).hexdigest()[:20]; org = site_name
+                if not title:
+                    continue
                 page_ids.append(raw_id); page_dates.append(registered)
                 if raw_id in seen:
                     continue
@@ -200,7 +262,7 @@ def list_bids(url, start_date, end_date, keyword='', site_name='미지정', max_
             # 공지 고정행이 있을 수 있어 페이지의 모든 날짜가 범위보다 과거일 때만 중단한다.
             if page_dates and max(page_dates) < start_date:
                 break
-            if not (is_nh or is_nhit or is_kb):
+            if not (is_nh or is_nhit or is_kb or is_shinds or is_hanati):
                 break
         else:
             if access is not None:
@@ -265,6 +327,27 @@ def _attachments(markup, origin):
             if not payload.get('_FILE_NAME'):
                 continue
             files.append(('POST', urljoin(origin, attrs.get('action', '/quics?asfilecode=534213')), payload, payload.get('_FILE_NAME', 'attachment.file')))
+    elif 'shinhands.co.kr' in host:
+        for a_attr, a_text in re.findall(r'<a\b([^>]*)>(.*?)</a>', markup, re.S | re.I):
+            attrs = _attrs(a_attr)
+            if 'btn-board-file-download' in attrs.get('class', ''):
+                db_val = attrs.get('data-db', '1')
+                id_val = attrs.get('data-id', '')
+                no_val = attrs.get('data-no', '0')
+                if id_val:
+                    file_url = f'https://www.shinhands.co.kr/download?db={db_val}&id={id_val}&no={no_val}'
+                    name = _text(a_text).strip() or 'attachment.file'
+                    files.append(('GET', file_url, None, name))
+    elif 'tipartner.hanati.co.kr' in host or 'hanati.co.kr' in host:
+        csrf_m = re.search(r'name="_csrf"\s+value="([^"]+)"', markup)
+        csrf = csrf_m.group(1) if csrf_m else ''
+        for a_attr, a_text in re.findall(r'<a\b([^>]*)>(.*?)</a>', markup, re.S | re.I):
+            attrs = _attrs(a_attr)
+            arg = attrs.get('data-arg', '')
+            if arg and 'downloadattfile' in attrs.get('onclick', '').lower():
+                file_url = urljoin(origin, 'upload/download.do')
+                name = _text(a_text).strip() or 'attachment.file'
+                files.append(('POST', file_url, {'id': arg, '_csrf': csrf}, name))
     else:
         for href, label in _links(markup):
             if re.search(r'(fileDown|download|fileDownload|\.pdf(?:\?|$)|\.hwp[x]?(?:\?|$)|\.zip(?:\?|$)|\.docx(?:\?|$))', href, re.I):
@@ -289,7 +372,14 @@ def _collect_item(item, base_dir, selected, local_classifier, force_refresh,
     item['classification_status'] = '수동 분류' if manual else '자동'
     with _session() as session:
         try:
-            response = _request(session, 'GET', origin)
+            if 'tipartner.hanati.co.kr' in origin:
+                raw_id = parse_qs(urlparse(origin).query).get('post_no', [''])[0] or item.get('게시물ID', '')
+                r0 = _request(session, 'GET', 'https://tipartner.hanati.co.kr/spLogin.do')
+                csrf_m = re.search(r'name="_csrf"\s+content="([^"]+)"', r0.text)
+                csrf = csrf_m.group(1) if csrf_m else ''
+                response = _request(session, 'POST', 'https://tipartner.hanati.co.kr/sp/mn/bidding/bidNoticeLink.do', data={'post_no': raw_id, '_csrf': csrf})
+            else:
+                response = _request(session, 'GET', origin)
             markup = response.text
             item['access']['detail'] = '공개 상세 접근 성공'
             detail_text = _text(markup)
