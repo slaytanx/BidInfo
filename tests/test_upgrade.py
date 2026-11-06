@@ -19,6 +19,7 @@ import db
 import hwp_parser as parser
 import llm_manager as llm
 import ollama_summary as analysis
+import pipeline
 
 
 class DocumentTests(unittest.TestCase):
@@ -511,6 +512,69 @@ class PageTests(unittest.TestCase):
         self.assertEqual(len(facts), 1)
         self.assertTrue(facts[0]['verified'])
         self.assertEqual(facts[0]['quote'], '6개월')
+
+
+class AnalysisProgressUITests(unittest.TestCase):
+    def test_step_callback_in_process_folder_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / 'test.txt').write_text('테스트 입찰 문서 내용입니다. 본문 테스트.', encoding='utf-8')
+            calls = []
+            def callback(msg):
+                calls.append(msg)
+            result = parser.process_folder_result(folder, step_callback=callback)
+            self.assertEqual(result['status'], '성공')
+            self.assertTrue(any('test.txt' in c for c in calls))
+
+    def test_step_callback_in_analyze_bid(self):
+        doc_text = '[제안요청서]\n사업예산은 1억원이며 수행기간은 6개월이다.'
+        calls = []
+        def callback(msg):
+            calls.append(msg)
+        mock_resp = {
+            'summary': '테스트 사업', 'budget': '1억원', 'duration': '6개월',
+            'evaluation': '', 'deadline': '', 'submit_type': '', 'required_docs': '',
+            'qualifications': '', 'cautions': '', 'tags': ['통신'], 'solution_tags': [],
+            'work_tags': [], 'fit_score': 90, 'fit_reason': '적합', 'evidence': [],
+            '_model': 'mock-model'
+        }
+        with patch.object(analysis, '_cached_json', return_value=mock_resp), \
+             patch.object(analysis, '_apply_facts', return_value=(dict(mock_resp), 0)):
+            res = analysis.analyze_bid_with_ollama('테스트 공고', doc_text, step_callback=callback)
+            self.assertEqual(res['analysis_status'], '성공')
+            self.assertTrue(any('요건 분석' in c for c in calls))
+
+    def test_step_callback_in_process_bids(self):
+        calls = []
+        def step_cb(item, msg):
+            calls.append((item.get('제목'), msg))
+
+        mock_item = {'게시물ID': 'test_p_1', '수집사이트': 'KB국민은행', '제목': '차세대 네트워크 구축', '폴더경로': '/dummy'}
+        with patch.object(pipeline, 'process_folder_result', return_value={'text': '문서 내용', 'status': '성공', 'errors': [], 'files': []}), \
+             patch.object(pipeline, 'analyze_bid_with_ollama', return_value={
+                 'summary': '요약', 'fit_score': 95, 'fit_reason': '적합', 'deadline': '',
+                 'submit_type': '', 'required_docs': '', 'qualifications': '', 'analysis_status': '성공',
+                 'model': 'mock', 'cache_key': 'k1', 'evidence': [], 'tags': ['통신'],
+                 'solution_tags': [], 'work_tags': []
+             }), \
+             patch.object(pipeline, 'save_bid'):
+            processed, stats = pipeline.process_bids([mock_item], None, [], step_callback=step_cb)
+            self.assertEqual(len(processed), 1)
+            self.assertTrue(any('추출 시작' in msg for _, msg in calls))
+            self.assertTrue(any('분석 시작' in msg or '완료' in msg for _, msg in calls))
+
+    def test_app_run_crawl_status_container(self):
+        from streamlit.testing.v1 import AppTest
+        mock_item = {'게시물ID': 'test_crawl_1', '수집사이트': 'KB국민은행', '제목': '대용량 RFP 테스트 공고', '폴더경로': '/dummy'}
+        with patch.object(crawler, 'crawl_and_download_bids_by_date', return_value=[mock_item]), \
+             patch.object(pipeline, 'process_bids', return_value=([mock_item], {'success': 1})), \
+             patch.object(llm, 'get_secret', return_value=''):
+            app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / 'app.py')).run(timeout=30)
+            self.assertFalse(app.exception)
+            crawl_btn = next(b for b in app.sidebar.button if b.label == "수집 시작")
+            crawl_btn.click()
+            app.run(timeout=30)
+            self.assertFalse(app.exception)
 
 
 if __name__ == '__main__':unittest.main()

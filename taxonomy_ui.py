@@ -75,10 +75,20 @@ def show_review_queue(base_dir,engines):
     by_id={r['bid_id']:r for r in waiting}
     selected_ids=st.multiselect('추가 수집할 확정 공고',list(by_id),format_func=lambda value:f"[{by_id[value]['site_name']}] {by_id[value]['title']}",key='confirmed_bid_ids')
     if st.button('선택한 확정 공고만 첨부 수집·분석',type='primary',disabled=not selected_ids,key='collect_confirmed'):
-        progress=st.progress(0.0)
         try:
-            with st.spinner('선택한 공고의 첨부를 수집하고 분석합니다...'):
-                result=process_confirmed(selected_ids,base_dir,engines,lambda n,t,r:progress.progress(n/t))
+            with st.status(f'선택 공고 {len(selected_ids)}건 수집 및 분석 중...', expanded=True) as status_box:
+                progress_bar = st.progress(0.0)
+                detail_text = st.empty()
+
+                def on_step(item, msg):
+                    detail_text.markdown(f"⏳ **진행 상세:** {msg}")
+
+                def on_progress(done, total, item):
+                    progress_bar.progress(done / total)
+                    status_box.write(f"✓ [{done}/{total}] {item.get('title', item.get('제목', ''))[:30]}")
+
+                result = process_confirmed(selected_ids, base_dir, engines, progress=on_progress, step_callback=on_step)
+                status_box.update(label=f'공고 {len(selected_ids)}건 수집 및 분석 완료!', state='complete', expanded=False)
             st.session_state['last_confirmed_result']=result
             st.rerun()
         except Exception as error:show_error(error)

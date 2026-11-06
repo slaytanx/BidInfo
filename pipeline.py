@@ -13,14 +13,23 @@ def extraction_details(result):
     return {'errors': result['errors'], 'files': [{k: v for k, v in f.items() if k not in ('text', 'segments')} for f in result['files']]}
 
 
-def _process(item, selected, engines, primary, secondary):
+def _process(item, selected, engines, primary, secondary, step_callback=None):
     started = time.monotonic()
+    bid_title = item.get('제목', '')
+    title_short = bid_title[:24] + ('...' if len(bid_title) > 24 else '')
+
+    def on_step(submsg):
+        if step_callback:
+            step_callback(item, f"[{title_short}] {submsg}")
+
     if item.get('classification_status') in ('판단 보류','수집 대기'):
         item.setdefault('extraction_details', {})
         item['extraction_details'].update(source_access=item.get('access', {}), download_errors=item.get('download_errors', []), files=[])
         item['analysis_status'] = '미분석'
         return item
-    documents = process_folder_result(item['폴더경로'])
+    on_step("첨부 문서 추출 시작")
+    documents = process_folder_result(item['폴더경로'], step_callback=on_step)
+    on_step("분야 및 솔루션 태그 판별 중")
     result = classify_rules(item['제목'])
     if not result['tags'] and documents['text']:
         result = classify_local(item['제목'], documents['text'])
@@ -36,8 +45,10 @@ def _process(item, selected, engines, primary, secondary):
     item['extraction_details']['download_errors'] = item.get('download_errors', [])
     if selected is not None and not should_collect(dict(result, tags=item['tags']), selected):
         item['analysis_status'] = '분야 제외'
+        on_step("선택 분야 제외")
         return item
-    response = analyze_bid_with_ollama(item['제목'], documents['text'], primary, secondary, engine_configs=engines)
+    on_step("AI 심층 분석 시작")
+    response = analyze_bid_with_ollama(item['제목'], documents['text'], primary, secondary, engine_configs=engines, step_callback=on_step)
     mapping = {'summary': '사업요약', 'fit_score': '적합도점수', 'fit_reason': '적합사유', 'deadline': '제출마감일시', 'submit_type': '제출방식', 'required_docs': '필수제출서류', 'qualifications': '참가자격요건'}
     item.update({target: response[key] for key, target in mapping.items()})
     item.update(analysis_status=response['analysis_status'], analysis_model=response['model'], analysis_key=response['cache_key'], evidence=response['evidence'])
@@ -47,14 +58,41 @@ def _process(item, selected, engines, primary, secondary):
     if documents['status'] == '부분 성공' and item['analysis_status'] == '성공':
         item['analysis_status'] = '부분 성공'
     item['processing_seconds'] = round(time.monotonic()-started, 3)
+    on_step(f"분석 완료 ({item['analysis_status']})")
     return item
 
 
-def process_bids(items, selected, engines, primary='통신', secondary='네트워크, 보안', progress=None):
+def process_bids(items, selected, engines, primary='통신', secondary='네트워크, 보안', progress=None, step_callback=None):
     start = time.monotonic()
     processed = []
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        for item in pool.map(lambda i: _process(dict(i), selected, engines, primary, secondary), items):
+    import threading
+
+    ctx = None
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        ctx = get_script_run_ctx()
+    except Exception:
+        pass
+
+    def _init_thread(parent_ctx):
+        if parent_ctx:
+            try:
+                from streamlit.runtime.scriptrunner import add_script_run_ctx
+                add_script_run_ctx(threading.current_thread(), parent_ctx)
+            except Exception:
+                pass
+
+    lock = threading.Lock()
+    def safe_step(item, msg):
+        if step_callback:
+            with lock:
+                try:
+                    step_callback(item, msg)
+                except Exception:
+                    pass
+
+    with ThreadPoolExecutor(max_workers=2, initializer=_init_thread, initargs=(ctx,)) as pool:
+        for item in pool.map(lambda i: _process(dict(i), selected, engines, primary, secondary, step_callback=safe_step if step_callback else None), items):
             save_bid(item)
             processed.append(item)
             if progress:
@@ -83,7 +121,7 @@ def backfill_existing(progress=None, use_llm=True):
     return stats
 
 
-def reanalyze_existing(engines, selected=None, progress=None):
+def reanalyze_existing(engines, selected=None, progress=None, step_callback=None):
     items = [{'게시물ID': r['bid_id'], '수집사이트': r['site_name'], '번호': r['num'], '계열사/조직': r['org'],
               '제목': r['title'], '등록일': r['reg_date'], '폴더경로': r['folder_path'], '원본URL': r['origin_url'],
               'tags': json.loads(r['tags'] or '[]'), 'solution_tags':json.loads(r['solution_tags'] or '[]'), 'work_tags':json.loads(r['work_tags'] or '[]'),
@@ -91,10 +129,10 @@ def reanalyze_existing(engines, selected=None, progress=None):
               'download_status': r['download_status']} for r in load_all_bids() if r['classification_status'] not in ('판단 보류','수집 제외','수집 대기')]
     if selected is not None:
         items = [i for i in items if not i['tags'] or set(i['tags']) & set(selected)]
-    return process_bids(items, selected, engines, progress=progress)
+    return process_bids(items, selected, engines, progress=progress, step_callback=step_callback)
 
 
-def process_confirmed(bid_ids, base_dir, engines, progress=None):
+def process_confirmed(bid_ids, base_dir, engines, progress=None, step_callback=None):
     from crawler import collect_confirmed_bid
     wanted = set(bid_ids)
     rows = [r for r in load_all_bids() if r['bid_id'] in wanted]
@@ -103,8 +141,10 @@ def process_confirmed(bid_ids, base_dir, engines, progress=None):
     results=[]
     # 사용자가 선택한 대상만 다운로드한다. 완료한 다른 공고는 재실행하지 않는다.
     for index,row in enumerate(rows,1):
+        if step_callback:
+            step_callback(row, f"[{row.get('title','')[:20]}] 첨부파일 수집 중...")
         item=collect_confirmed_bid(row,base_dir)
-        processed,stats=process_bids([item],None,engines)
+        processed,stats=process_bids([item],None,engines,step_callback=step_callback)
         result=processed[0]
         done=result.get('download_status')=='성공' and result.get('analysis_status')=='성공'
         finish_manual_collection(row['bid_id'],done)

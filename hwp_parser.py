@@ -201,14 +201,21 @@ def _quality(text):
     return len(re.findall(r'[가-힣A-Za-z0-9]', text)) >= 30
 
 
-def _pdf_segments(path, ocr=True):
+def _pdf_segments(path, ocr=True, step_callback=None):
     import pymupdf
     import pymupdf4llm
     ocr = ocr and bool(shutil.which('tesseract'))
     with pymupdf.open(str(path)) as doc:
         if doc.needs_pass and not doc.authenticate(''):
             raise ValueError('암호화된 PDF')
+        total_pages = len(doc)
         scanned = [not _quality(page.get_text()) for page in doc]
+        if step_callback:
+            scanned_pages = sum(scanned)
+            if ocr and scanned_pages > 0:
+                step_callback(f"{Path(path).name} (전체 {total_pages}p 중 스캔 {scanned_pages}p OCR 추출 중...)")
+            else:
+                step_callback(f"{Path(path).name} (전체 {total_pages}p 디지털 텍스트 추출 중...)")
         chunks = pymupdf4llm.to_markdown(doc, page_chunks=True, use_ocr=ocr, ocr_language='kor+eng')
     segments, errors = [], []
     for chunk in chunks:
@@ -253,7 +260,7 @@ def detect_format(path):
     return 'txt' if suffix == '.txt' else 'unsupported'
 
 
-def extract_document(path, ocr=True, use_cache=True):
+def extract_document(path, ocr=True, use_cache=True, step_callback=None):
     path = Path(path)
     result = {'file': path.name, 'status': '실패', 'method': '', 'segments': [], 'errors': [], 'text': '', 'cache_hit': False}
     try:
@@ -266,6 +273,8 @@ def extract_document(path, ocr=True, use_cache=True):
             try:
                 saved = json.loads(cache.read_text())
                 if saved.get('status') == '성공' and isinstance(saved.get('text'), str):
+                    if step_callback:
+                        step_callback(f"{path.name} (캐시 사용)")
                     saved.update(file=path.name, cache_hit=True)
                     return saved
             except (OSError, ValueError):
@@ -276,20 +285,32 @@ def extract_document(path, ocr=True, use_cache=True):
                 if sum(i.file_size for i in archive.infolist()) > MAX_ZIP_BYTES:
                     raise ValueError('문서 압축 해제 크기 제한 초과')
         if kind == 'hwp':
+            if step_callback:
+                step_callback(f"{path.name} (HWP 변환 추출 중...)")
             segments, errors, method = _hwp_segments(path)
         elif kind == 'pdf':
-            segments, errors, method = _pdf_segments(path, ocr)
+            segments, errors, method = _pdf_segments(path, ocr, step_callback=step_callback)
         elif kind == 'hwpx':
+            if step_callback:
+                step_callback(f"{path.name} (HWPX 변환 추출 중...)")
             segments, errors, method = _hwpx_segments(path)
         elif kind == 'docx':
+            if step_callback:
+                step_callback(f"{path.name} (Word 변환 추출 중...)")
             segments, errors, method = _docx_segments(path)
         elif kind in ('pptx', 'html', 'rtf'):
+            if step_callback:
+                step_callback(f"{path.name} ({kind.upper()} 텍스트 추출 중...)")
             segments, errors, method = _pandoc_segments(path, kind)
         elif kind in ('xlsx', 'xls'):
+            if step_callback:
+                step_callback(f"{path.name} (Excel 시트 파싱 중...)")
             segments, errors, method = _excel_segments(path, kind)
         elif kind == 'doc':
             raise ValueError('구형 DOC: DOCX로 변환해 주세요')
         elif kind == 'txt':
+            if step_callback:
+                step_callback(f"{path.name} (텍스트 읽는 중...)")
             segments, errors, method = [{'location': '본문', 'text': extract_text_from_txt(str(path))}], [], '텍스트'
         else:
             raise ValueError('미지원 형식 또는 문서가 아닌 다운로드 응답')
@@ -375,7 +396,7 @@ def skip_reason(name, text=''):
     return ''
 
 
-def process_folder_result(folder_path, ocr=True):
+def process_folder_result(folder_path, ocr=True, step_callback=None):
     folder = Path(folder_path)
     if not folder.is_dir():
         return {'text': '', 'files': [], 'status': '실패', 'errors': ['첨부 폴더 없음']}
@@ -387,19 +408,23 @@ def process_folder_result(folder_path, ocr=True):
         for path in archives:
             seen.add(path)
             try:
+                if step_callback:
+                    step_callback(f"{path.name} 압축 해제 중...")
                 extract_zip(path, path.parent)
             except Exception as exc:
                 errors.append(f'{path.name}: {exc}')
     if any(p not in seen for p in folder.rglob('*.zip')):
         errors.append('중첩 ZIP 깊이 제한 초과')
     results, digests = [], set()
-    for path in sorted(folder.rglob('*')):
-        if not path.is_file() or path.suffix.lower() in ('.zip', '.json', '.db'):
-            continue
+    files_to_parse = [p for p in sorted(folder.rglob('*')) if p.is_file() and p.suffix.lower() not in ('.zip', '.json', '.db')]
+    total_files = len(files_to_parse)
+    for idx, path in enumerate(files_to_parse, 1):
         if reason := skip_reason(path.name):
             results.append({'file': path.name, 'status': '생략', 'skip': reason, 'errors': [], 'text': ''})
             continue
-        result = extract_document(path, ocr)
+        if step_callback:
+            step_callback(f"{path.name} 문서 추출 중 ({idx}/{total_files})...")
+        result = extract_document(path, ocr, step_callback=step_callback)
         if result.get('hash') in digests:
             continue
         if result.get('hash'):

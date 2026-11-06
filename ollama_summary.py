@@ -239,7 +239,7 @@ def _apply_facts(result, text, configs):
     return result, skipped
 
 
-def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords='네트워크, 보안', model_name=LOCAL_MODEL, engine_configs=None):
+def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords='네트워크, 보안', model_name=LOCAL_MODEL, engine_configs=None, step_callback=None):
     configs = engine_configs or [{'provider': 'Local Ollama', 'model': model_name}]
     if not doc_text.strip():
         return dict(SCHEMA, summary='문서 추출 실패 또는 첨부 없음: 원본 확인 필요', fit_reason='문서 미확인', analysis_status='실패', model='', cache_key='')
@@ -251,16 +251,21 @@ def analyze_bid_with_ollama(title, doc_text, pri_keywords='통신', sec_keywords
                     'evidence는 {"field":"deadline","quote":"원문 그대로","location":"파일/페이지/문자 위치"} 객체 목록. '
                     f'다음 키를 모두 갖는 JSON만 반환: {json.dumps(SCHEMA, ensure_ascii=False)}\n제목: {title}\n')
     prompts = [instructions + chunk for chunk in document_chunks(doc_text)]
+    total_chunks = len(prompts)
     full_key = _key(instructions + doc_text, configs)
     try:
         parts = []
-        for prompt in prompts:
+        for idx, prompt in enumerate(prompts, 1):
+            if step_callback:
+                step_callback(f"LLM 요건 분석 중 ({idx}/{total_chunks} 구간)...")
             try:
                 parts.append(_ground(_cached_json(prompt, configs), doc_text))
             except Exception:
                 continue  # 한 구간의 응답 오류로 분석 전체를 버리지 않는다. 전부 실패하면 아래에서 실패 처리.
         if not parts:
             raise RuntimeError('모든 구간 분석 실패')
+        if step_callback:
+            step_callback("분석 결과 통합 및 필수 요건 검증 중...")
         result, skipped = _apply_facts(_merge(parts), doc_text, configs)
         if skipped:
             result['cautions'] = f'항목 추출 {skipped}개 묶음 실패 또는 근거 없음: 구간 분석 값 유지, 원문 확인 필요; ' + result['cautions']

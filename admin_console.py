@@ -204,11 +204,26 @@ def render_maintenance_and_benchmark_tab():
             cloud_model = get_setting("cloud_model", CLOUD_MODELS[0])
             local_model = get_setting("local_model", LOCAL_MODELS[0])
             analysis_mode = get_setting("analysis_mode", "혼합")
-            with st.spinner("선택 분야의 기존 첨부를 분석합니다..."):
+            with st.status("선택 분야의 기존 첨부 재추출 및 AI 재분석 중...", expanded=True) as status_box:
+                progress_bar = st.progress(0.0)
+                detail_text = st.empty()
+
+                def on_step(item, msg):
+                    detail_text.markdown(f"⏳ **진행 상세:** {msg}")
+
+                def on_progress(done, total, item):
+                    progress_bar.progress(done / total)
+                    status = item.get("analysis_status", "완료")
+                    icon = "✅" if status == "성공" else "⚠️" if status == "부분 성공" else "ℹ️"
+                    status_box.write(f"{icon} [{done}/{total}] **{item['제목']}** (`{status}`)")
+
                 _, stats = reanalyze_existing(
                     engine_configs(analysis_mode, cloud_model, local_model),
                     reanalyze_cats,
+                    progress=on_progress,
+                    step_callback=on_step,
                 )
+                status_box.update(label="선택 분야 기존 공고 재분석 완료!", state="complete", expanded=False)
             st.session_state["last_run_metrics"] = stats
             st.success("선택 분야 기존 공고 재분석이 완료되었습니다.")
             st.rerun()

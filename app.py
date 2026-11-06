@@ -511,13 +511,29 @@ if run_crawl:
                     search_kw, selected_site_name, selected_categories, analysis_mode != "OpenRouter", force_refresh, stats,
                     selected_solutions=selected_solutions, selected_work=selected_work, include_uncertain=include_uncertain)
             if bids:
-                progress_bar = st.progress(0.0)
-                status_text = st.empty()
-                def on_progress(done, total, item):
-                    progress_bar.progress(done / total)
-                    status_text.text(f"[{done}/{total}] {item['제목'][:30]}: {item.get('analysis_status', '미확인')}")
-                _, analysis_stats = process_bids(bids, selected_categories,
-                    engine_configs(analysis_mode, cloud_model, local_model), pri_kw, sec_kw, on_progress)
+                with st.status(f"공고 {len(bids)}건 본문 추출 및 AI 정밀 분석 중...", expanded=True) as status_box:
+                    progress_bar = st.progress(0.0)
+                    detail_text = st.empty()
+
+                    def on_step(item, msg):
+                        detail_text.markdown(f"⏳ **진행 상세:** {msg}")
+
+                    def on_progress(done, total, item):
+                        progress_bar.progress(done / total)
+                        status = item.get("analysis_status", "완료")
+                        icon = "✅" if status == "성공" else "⚠️" if status == "부분 성공" else "ℹ️"
+                        status_box.write(f"{icon} [{done}/{total}] **{item['제목']}** (`{status}`)")
+
+                    _, analysis_stats = process_bids(
+                        bids,
+                        selected_categories,
+                        engine_configs(analysis_mode, cloud_model, local_model),
+                        pri_kw,
+                        sec_kw,
+                        progress=on_progress,
+                        step_callback=on_step,
+                    )
+                    status_box.update(label=f"공고 {len(bids)}건 분석 완료!", state="complete", expanded=False)
                 stats.update(analysis_stats)
             st.session_state["last_run_metrics"] = stats
             st.rerun()
