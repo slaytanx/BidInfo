@@ -476,6 +476,13 @@ class PageTests(unittest.TestCase):
             res = llm.call_openrouter('시험', 'synthetic-key', max_tokens=100)
         self.assertEqual(res, '{"ok":true}')
 
+    def test_openrouter_400_fatal_no_retry(self):
+        fatal = Mock(status_code=400)
+        with patch.object(llm.requests, 'post', return_value=fatal):
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.call_openrouter('프롬프트', 'test-key', max_tokens=50)
+        self.assertIn('OpenRouter HTTP 400', str(ctx.exception))
+
     def test_generate_llm_response_preserves_exception(self):
         configs = [{'provider': 'Local Ollama', 'model': 'llama3'}]
         with patch.object(llm, 'call_ollama', side_effect=RuntimeError('Connection refused to Ollama')):
@@ -487,6 +494,33 @@ class PageTests(unittest.TestCase):
         with self.assertRaises(llm.LLMError) as ctx2:
             llm.generate_llm_response('prompt', unsupported_configs)
         self.assertIn('NVIDIA NIM: 미지원 공급자: NVIDIA NIM', str(ctx2.exception))
+
+    def test_cascading_multi_engine_fallback_preserves_all_errors(self):
+        configs = [
+            {'provider': 'OpenRouter', 'model': 'deepseek', 'api_key': 'k1'},
+            {'provider': 'Local Ollama', 'model': 'llama3'}
+        ]
+        with patch.object(llm, 'call_openrouter', side_effect=RuntimeError('OpenRouter rate limit')), \
+             patch.object(llm, 'call_ollama', side_effect=RuntimeError('Ollama dead')):
+            with self.assertRaises(llm.LLMError) as ctx:
+                llm.generate_llm_response('prompt', configs)
+            err = str(ctx.exception)
+            self.assertIn('OpenRouter: OpenRouter rate limit', err)
+            self.assertIn('Local Ollama: Ollama dead', err)
+
+    def test_field_format_rejection(self):
+        text = "사업기간 및 사업예산 1억원 관련 공고"
+        raw_facts = [
+            {"field": "budget", "fact": "협의에 따름", "quote": "협의에 따름"},
+            {"field": "duration", "fact": "추후 결정", "quote": "추후 결정"},
+            {"field": "deadline", "fact": "별도 통보", "quote": "별도 통보"},
+            {"field": "budget", "fact": "사업예산 1억원", "quote": "1억원"},
+        ]
+        with patch.object(analysis, "_cached_facts", return_value=raw_facts):
+            facts = analysis._extract_facts(text, ["budget", "duration", "deadline"], {}, [])
+        self.assertEqual(len(facts), 1)
+        self.assertEqual(facts[0]["field"], "budget")
+        self.assertEqual(facts[0]["fact"], "사업예산 1억원")
 
     def test_extract_facts_short_quote_in_text(self):
         text = '사업기간은 6개월이며 총 사업예산은 1억원이다.'
