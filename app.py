@@ -81,6 +81,16 @@ def cached_excel(stamp):
 
 
 @st.cache_data(show_spinner=False)
+def cached_filtered_excel(bid_ids_tuple: tuple, stamp: float) -> bytes:
+    """필터링된 공고 목록의 엑셀 바이너리를 캐싱한다."""
+    if not bid_ids_tuple:
+        return b""
+    bids_by_id = {b["bid_id"]: b for b in cached_bids(stamp)}
+    ordered_bids = [bids_by_id[bid_id] for bid_id in bid_ids_tuple if bid_id in bids_by_id]
+    return generate_excel_export(ordered_bids) if ordered_bids else b""
+
+
+@st.cache_data(show_spinner=False)
 def prepared_bids(stamp, today_key):
     """표시용 열을 한 번만 계산한다. D-Day가 날짜에 의존하므로 오늘 날짜를 키에 포함한다."""
     bids = cached_bids(stamp)
@@ -662,10 +672,11 @@ col_cnt, col_exp_btn, col_reset = st.columns([2.4, 1.4, 1.2], vertical_alignment
 col_cnt.caption(f"{len(filtered_df)} / {len(df)}건 표시")
 with col_exp_btn:
     if not filtered_df.empty:
-        filtered_dicts = filtered_df.to_dict("records")
+        bid_ids_key = tuple(filtered_df["bid_id"].tolist())
+        excel_data = cached_filtered_excel(bid_ids_key, db_stamp())
         st.download_button(
             label="📥 목록 엑셀 저장",
-            data=generate_excel_export(filtered_dicts),
+            data=excel_data,
             file_name=f"bids_filtered_{today}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             width="stretch",

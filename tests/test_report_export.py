@@ -1,5 +1,7 @@
+import io
 import re
 import unittest
+from openpyxl import load_workbook
 from report_export import generate_excel_export, generate_bid_review_markdown, generate_bid_review_html
 
 
@@ -35,6 +37,31 @@ class ReportExportTests(unittest.TestCase):
         self.assertGreater(len(xlsx_bytes), 1000)
         # Check PK zip header for xlsx
         self.assertTrue(xlsx_bytes.startswith(b"PK\x03\x04"))
+
+    def test_generate_excel_export_hyperlink_validation(self):
+        valid_bid = dict(self.sample_bid, origin_url="https://example.com/valid")
+        invalid_bid = dict(self.sample_bid, origin_url="javascript:alert(1)")
+        empty_url_bid = dict(self.sample_bid, origin_url="")
+
+        xlsx_bytes = generate_excel_export([valid_bid, invalid_bid, empty_url_bid])
+        wb = load_workbook(io.BytesIO(xlsx_bytes))
+        ws = wb.active
+
+        # Row 2 (valid_bid): col 21 should have hyperlink and value "바로가기"
+        cell_valid = ws.cell(row=2, column=21)
+        self.assertEqual(cell_valid.value, "바로가기")
+        self.assertIsNotNone(cell_valid.hyperlink)
+        self.assertEqual(cell_valid.hyperlink.target, "https://example.com/valid")
+
+        # Row 3 (invalid_bid): col 21 should NOT have hyperlink and value "-"
+        cell_invalid = ws.cell(row=3, column=21)
+        self.assertEqual(cell_invalid.value, "-")
+        self.assertIsNone(cell_invalid.hyperlink)
+
+        # Row 4 (empty_url_bid): col 21 should NOT have hyperlink and value "-"
+        cell_empty = ws.cell(row=4, column=21)
+        self.assertEqual(cell_empty.value, "-")
+        self.assertIsNone(cell_empty.hyperlink)
 
     def test_generate_bid_review_markdown(self):
         md = generate_bid_review_markdown(self.sample_bid)
