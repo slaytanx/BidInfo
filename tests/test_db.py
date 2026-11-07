@@ -37,8 +37,6 @@ class TestDB(unittest.TestCase):
         }
         
         db.save_bid(sample_bid)
-        self.assertTrue(db.is_bid_exists("TEST_001"))
-        
         bids = db.load_all_bids()
         self.assertEqual(len(bids), 1)
         self.assertEqual(bids[0]["title"], "테스트 입찰 공고")
@@ -52,7 +50,7 @@ class TestDB(unittest.TestCase):
         
         # 삭제 테스트
         db.delete_bids(["TEST_001"])
-        self.assertFalse(db.is_bid_exists("TEST_001"))
+        self.assertEqual(len(db.load_all_bids()), 0)
 
     def test_default_sites_and_source_keys(self):
         db.init_db()

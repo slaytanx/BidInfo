@@ -7,6 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from llm_manager import CLOUD_MODELS, LOCAL_MODELS, get_secret
 from ollama_summary import analyze_bid_with_ollama, PROMPT_VERSION
+from taxonomy import legacy_classification
 
 
 def rfp_cases():
@@ -21,8 +22,7 @@ def rfp_cases():
                 f'사업 범위: {subject}에 필요한 장비와 업무를 수행한다.\n{filler}'
                 f'[p.2]\n제출마감일시: {deadline}\n제출방식: 전자제출\n필수제출서류: 제안서, 사업자등록증\n'
                 '참가자격요건: 소프트웨어사업자 신고 확인서를 보유한 업체\n평가배점: 기술 80점, 가격 20점\n')
-        from taxonomy import legacy_classification
-        mapped=legacy_classification([tag])
+        mapped = legacy_classification([tag])
         cases.append({'title': subject, 'text': text, 'tag': (mapped['tags'] or ['인프라'])[0], 'deadline': deadline})
     return cases
 

@@ -2,6 +2,7 @@
 import functools
 import hashlib
 import json
+import sqlite3
 
 DOMAINS = ['인프라', '보안', '컨설팅', '개발', '기타']
 DEFAULT_DOMAINS = DOMAINS[:4]
@@ -133,7 +134,7 @@ def load_taxonomy(enabled_only=True):
     from db import init_db, get_db_connection
     init_db()
     with get_db_connection() as conn:
-        conn.row_factory = __import__('sqlite3').Row
+        conn.row_factory = sqlite3.Row
         rows = [dict(row) for row in conn.execute('SELECT * FROM taxonomy' + (' WHERE enabled=1' if enabled_only else '') + ' ORDER BY id')]
     for row in rows:
         row['aliases'] = json.loads(row['aliases']);row['sources'] = json.loads(row['sources'])

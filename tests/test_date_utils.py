@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from date_utils import calculate_d_day, extract_date_from_text, parse_user_date
+from date_utils import calculate_d_day, extract_date_from_text
 
 
 class TestDateUtils(unittest.TestCase):
@@ -45,11 +45,6 @@ class TestDateUtils(unittest.TestCase):
         # 12월 15일 기준, 같은 12월의 과거 날짜(12월 10일)는 마감됨
         self.assertEqual(calculate_d_day("12월 10일 17:00까지", target_date=ref_date), "마감됨")
 
-    def test_parse_user_date(self):
-        default_d = date(2026, 1, 1)
-        self.assertEqual(parse_user_date("2026-07-31", default_d), date(2026, 7, 31))
-        self.assertEqual(parse_user_date("잘못된입력", default_d), default_d)
-        self.assertEqual(parse_user_date("", default_d), default_d)
 
 if __name__ == "__main__":
     unittest.main()

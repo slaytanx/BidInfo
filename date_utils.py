@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, date
+from datetime import date
 
 def extract_date_from_text(text: str) -> date | None:
     """
@@ -69,14 +69,3 @@ def calculate_d_day(deadline_str: str, target_date: date = None) -> str:
         return "🔥 D-DAY"
     else:
         return f"⏳ D-{diff}"
-
-def parse_user_date(user_input: str, default_date: date) -> date:
-    """
-    사용자 입력 문자열(YYYY-MM-DD)을 date 객체로 파싱합니다.
-    """
-    if not user_input or not user_input.strip():
-        return default_date
-    try:
-        return datetime.strptime(user_input.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        return default_date

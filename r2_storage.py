@@ -61,20 +61,6 @@ def sync_local_to_r2(data_dir):
         stats["success" if success else "failed"] += 1
     return stats
 
-def download_db_from_r2(local_db_path: str) -> bool:
-    """R2 스토리지에서 bids_history.db 동기화 다운로드"""
-    s3 = get_s3_client()
-    if not s3:
-        return False
-    try:
-        bucket = os.environ.get("R2_BUCKET_NAME", R2_BUCKET_NAME)
-        os.makedirs(os.path.dirname(local_db_path), exist_ok=True)
-        s3.download_file(bucket, "bids_history.db", local_db_path)
-        print("📥 [R2 Storage] bids_history.db 성공적으로 최신 동기화 완료!")
-        return True
-    except Exception as e:
-        print(f"⚠️ [R2 Storage] DB 다운로드 시도 (스토리지 신규인 경우 정상): {e}")
-        return False
 
 def upload_db_to_r2(local_db_path: str) -> bool:
     """로컬 bids_history.db를 R2 스토리지에 영구 업로드 동기화"""

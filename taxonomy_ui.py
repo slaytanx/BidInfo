@@ -1,5 +1,6 @@
 """분류 사전 관리와 판단 보류 공고의 수동 확정·선택 수집 화면."""
 import json
+import sqlite3
 import streamlit as st
 from taxonomy import DOMAINS, DEFAULT_DOMAINS, SOURCES, load_taxonomy, taxonomy_options, save_taxonomy_item
 from ui_errors import show_error
@@ -31,7 +32,7 @@ def show_taxonomy_editor():
                     save_taxonomy_item(kind,domain,name,aliases.replace('\n',',').split(','),enabled,row['id'] if row else None)
                     st.success('사전을 저장했습니다. 새 수집·재분류부터 적용됩니다.')
                     st.rerun()
-                except (ValueError, __import__('sqlite3').IntegrityError) as error:
+                except (ValueError, sqlite3.IntegrityError) as error:
                     st.error(str(error))
         st.download_button('분류 사전 JSON 받기',json.dumps({'items':rows,'sources':SOURCES},ensure_ascii=False,indent=2),file_name='bid_taxonomy.json',mime='application/json')
         for source in SOURCES.values():st.caption(f"[{source['title']}]({source['url']})")

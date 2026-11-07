@@ -105,16 +105,6 @@ def init_db():
     _READY.add(DB_PATH)
 
 
-def is_bid_exists(bid_id, site_name=None, url=''):
-    if not bid_id:
-        return False
-    init_db()
-    with get_db_connection() as conn:
-        if site_name is not None:
-            return conn.execute('SELECT 1 FROM bids WHERE bid_id=?', (canonical_id(bid_id, site_name, url),)).fetchone() is not None
-        return conn.execute('SELECT 1 FROM bids WHERE bid_id=? OR source_id=?', (bid_id, bid_id)).fetchone() is not None
-
-
 def existing_bid_ids(site, url):
     init_db()
     with get_db_connection() as conn:

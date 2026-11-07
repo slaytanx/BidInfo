@@ -131,7 +131,7 @@ def deadline_style(value):
 def get_admin_password():
     return admin_pass_secret or ""
 
-# 💡 R2 스토리지에서 최신 bids_history.db 영구 데이터 다운로드 동기화
+# 💡 로컬 DB 초기화 및 R2 동기화 활성화 설정 로드
 init_db()
 os.environ["BIDINFO_R2_ENABLED"] = get_setting("r2_enabled", "0")
 
