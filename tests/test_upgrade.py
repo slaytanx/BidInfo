@@ -308,6 +308,19 @@ class BudgetAnalysisTests(unittest.TestCase):
         with self.assertRaises(ValueError):analysis.validate_analysis({'summary':'불완전'})
         with self.assertRaises(Exception):llm.parse_json('잘못된 JSON')
 
+    def test_parse_json_resilience(self):
+        # 1. 서두/결미 설명문과 ```json 코드 블록 포함 응답
+        res1 = llm.parse_json('네, 요청하신 입찰 분석 결과입니다:\n```json\n{"summary": "보안 장비 구축"}\n```\n참고 바랍니다.')
+        self.assertEqual(res1, {"summary": "보안 장비 구축"})
+
+        # 2. 백틱 없는 문장형 응답 속 JSON 객체 슬라이싱
+        res2 = llm.parse_json('분석 결과는 다음과 같습니다: {"summary": "방화벽 교체"} 이상입니다.')
+        self.assertEqual(res2, {"summary": "방화벽 교체"})
+
+        # 3. 딕셔너리가 아닌 리스트 응답은 LLMError
+        with self.assertRaises(llm.LLMError):
+            llm.parse_json('```json\n["리스트", "응답"]\n```')
+
     def test_unknown_tags_are_dropped_not_fatal(self):
         result=dict(analysis.SCHEMA,summary='서버 구축',fit_reason='서버',tags=['인프라','없는분야'],solution_tags=['서버','없는항목'],work_tags=['구축','없는업무'],evidence=[])
         checked=analysis.validate_analysis(result)

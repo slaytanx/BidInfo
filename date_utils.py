@@ -47,7 +47,11 @@ def calculate_d_day(deadline_str: str, target_date: date = None) -> str:
             ref_date = target_date or date.today()
             for match_md in reversed(matches_md):
                 try:
-                    deadline_date = date(ref_date.year, int(match_md.group(1)), int(match_md.group(2)))
+                    month = int(match_md.group(1))
+                    day = int(match_md.group(2))
+                    # 연말(10~12월)에 고시된 익년 초(1~3월) 마감 공고의 연도 롤오버 보정
+                    year = ref_date.year + 1 if ref_date.month >= 10 and month <= 3 else ref_date.year
+                    deadline_date = date(year, month, day)
                     break
                 except ValueError:
                     pass

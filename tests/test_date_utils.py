@@ -37,6 +37,14 @@ class TestDateUtils(unittest.TestCase):
         # 이미 마감일이 지난 범위
         self.assertEqual(calculate_d_day("2026.10.01 ~ 2026.10.10", target_date=ref_date), "마감됨")
 
+    def test_calculate_d_day_year_rollover(self):
+        # 12월 15일 기준, 연도 생략 "1월 10일 마감" 공고는 익년 1월 10일이므로 D-26이어야 함 (마감됨 아님)
+        ref_date = date(2026, 12, 15)
+        self.assertEqual(calculate_d_day("1월 10일 17:00까지", target_date=ref_date), "⏳ D-26")
+        self.assertEqual(calculate_d_day("12월 01일 ~ 01월 15일", target_date=ref_date), "⏳ D-31")
+        # 12월 15일 기준, 같은 12월의 과거 날짜(12월 10일)는 마감됨
+        self.assertEqual(calculate_d_day("12월 10일 17:00까지", target_date=ref_date), "마감됨")
+
     def test_parse_user_date(self):
         default_d = date(2026, 1, 1)
         self.assertEqual(parse_user_date("2026-07-31", default_d), date(2026, 7, 31))

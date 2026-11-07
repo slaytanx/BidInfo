@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import threading
 import time
 import requests
@@ -54,8 +55,14 @@ def save_secrets(values):
 
 def parse_json(value):
     text = value.strip()
-    if text.startswith('```'):
-        text = text.split('\n', 1)[1].rsplit('```', 1)[0]
+    match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
+    if match:
+        text = match.group(1).strip()
+    elif not text.startswith('{') and '{' in text and '}' in text:
+        brace_start = text.find('{')
+        brace_end = text.rfind('}')
+        if brace_start != -1 and brace_end > brace_start:
+            text = text[brace_start:brace_end + 1].strip()
     parsed = json.loads(text)
     if not isinstance(parsed, dict):
         raise LLMError('JSON 객체가 아닌 모델 응답')
