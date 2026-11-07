@@ -1,3 +1,4 @@
+import re
 import unittest
 from report_export import generate_excel_export, generate_bid_review_markdown, generate_bid_review_html
 
@@ -78,6 +79,45 @@ class ReportExportTests(unittest.TestCase):
 
         html_doc = generate_bid_review_html(empty_bid)
         self.assertIn("<!DOCTYPE html>", html_doc)
+        self.assertIn("링크 없음", html_doc)
+        self.assertNotIn('<a href=""', html_doc)
+
+    def test_markdown_escaping_pipe_and_newlines(self):
+        tricky_bid = dict(self.sample_bid)
+        tricky_bid["title"] = "[긴급] 차세대 인프라 구축 | 2차"
+        tricky_bid["budget"] = "10억원\n(VAT 포함) | 변동가능"
+        tricky_bid["evaluation"] = "기술 80% | 가격 20%"
+        tricky_bid["origin_url"] = ""
+        tricky_bid["evidence"] = '[{"field": "budget", "quote": "예산 10억 | 확정", "location": "제안요청서 1p | 2p"}]'
+
+        md = generate_bid_review_markdown(tricky_bid)
+        self.assertIn("차세대 인프라 구축 \\| 2차", md)
+        self.assertIn("10억원 (VAT 포함) \\| 변동가능", md)
+        self.assertIn("기술 80% \\| 가격 20%", md)
+        self.assertIn("예산 10억 \\| 확정", md)
+        self.assertIn("링크 없음", md)
+
+        # 개요 테이블 각 행의 파이프 개수 검증 (각 행당 정확히 2개 컬럼 -> 3개의 파이프 기호)
+        table_lines = [line.strip() for line in md.split("\n") if line.strip().startswith("| **")]
+        for line in table_lines:
+            # 이스케이프되지 않은 파이프 개수 확인
+            unescaped_pipes = [m.start() for m in re.finditer(r'(?<!\\)\|', line)]
+            self.assertEqual(len(unescaped_pipes), 3, f"테이블 열 파싱 깨짐: {line}")
+
+    def test_html_origin_link_safety(self):
+        # 1. 빈 URL 테스트
+        no_url_bid = dict(self.sample_bid, origin_url="")
+        html_out = generate_bid_review_html(no_url_bid)
+        self.assertIn('<span style="color:#888;">링크 없음</span>', html_out)
+        self.assertNotIn('<a href=""', html_out)
+
+        # 2. XSS 시도 또는 특수문자 포함 URL 테스트
+        unsafe_bid = dict(self.sample_bid, origin_url='https://example.com/bid?id=1&name="test"<script>')
+        html_out = generate_bid_review_html(unsafe_bid)
+        self.assertIn('&amp;', html_out)
+        self.assertIn('&quot;', html_out)
+        self.assertNotIn('<script>', html_out)
+        self.assertNotIn('name="test"', html_out)
 
 
 if __name__ == "__main__":

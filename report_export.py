@@ -19,6 +19,12 @@ def _safe_escape(val, default=""):
     return html.escape(_safe_str(val, default))
 
 
+def _safe_md_cell(val, default=""):
+    """마크다운 테이블 셀에서 파이프(|)와 줄바꿈을 안전하게 치환한다."""
+    s = _safe_str(val, default).replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+    return s.replace("|", "\\|").strip()
+
+
 def _safe_json_list(val):
     if not val:
         return []
@@ -121,7 +127,8 @@ def generate_excel_export(bids_data: list[dict]) -> bytes:
         sol_str = ", ".join(_safe_json_list(row.get("solution_tags")))
         work_str = ", ".join(_safe_json_list(row.get("work_tags")))
 
-        origin_link = row.get("origin_url", "") or ""
+        origin_link = (row.get("origin_url") or "").strip()
+        has_valid_link = origin_link.startswith(("http://", "https://"))
 
         values = [
             row.get("num") or (row_idx - 1),
@@ -144,7 +151,7 @@ def generate_excel_export(bids_data: list[dict]) -> bytes:
             row.get("qualifications") or "확인 불가",
             row.get("summary") or "미분석",
             row.get("fit_reason") or "미분석",
-            "바로가기" if origin_link else "-"
+            "바로가기" if has_valid_link else "-"
         ]
 
         for col_idx, val in enumerate(values, start=1):
@@ -180,7 +187,7 @@ def generate_excel_export(bids_data: list[dict]) -> bytes:
                     cell.font = font_mid_fit
 
             # 원본 링크 하이퍼링크 처리
-            if col_idx == 21 and origin_link:
+            if col_idx == 21 and has_valid_link:
                 cell.hyperlink = origin_link
                 cell.font = link_font
 
@@ -235,7 +242,11 @@ def generate_bid_review_markdown(bid: dict) -> str:
     fit_score = bid.get("fit_score")
     fit_text = f"{int(fit_score)}점" if fit_score is not None and str(fit_score).isdigit() else "미분석"
     status = _safe_str(bid.get("status"), "검토중")
-    origin_url = _safe_str(bid.get("origin_url"), "")
+    origin_raw = _safe_str(bid.get("origin_url"), "").strip()
+    if origin_raw.startswith(("http://", "https://")):
+        origin_link_md = f"[{_safe_md_cell(title)}]({origin_raw})"
+    else:
+        origin_link_md = "링크 없음"
 
     budget = _safe_str(bid.get("budget")) or _extract_evidence_field(bid.get("evidence"), "budget")
     duration = _safe_str(bid.get("duration")) or _extract_evidence_field(bid.get("evidence"), "duration")
@@ -267,15 +278,15 @@ def generate_bid_review_markdown(bid: dict) -> str:
     for ev in evidence_list:
         if isinstance(ev, dict) and ev.get("quote"):
             fld = field_korean.get(ev.get("field", ""), ev.get("field", ""))
-            loc = ev.get("location", "원문")
-            q = ev.get("quote", "").replace("\n", " ")
+            loc = _safe_md_cell(ev.get("location", "원문"))
+            q = _safe_md_cell(ev.get("quote", ""))
             evidence_rows.append(f"| {fld} | {q} | {loc} |")
 
     evidence_table = "\n".join(evidence_rows) if evidence_rows else "| - | 원문 인용 근거가 없습니다. | - |"
 
-    md = f"""# [제안 검토 보고서] {title}
+    md = f"""# [제안 검토 보고서] {_safe_md_cell(title)}
 
-**작성일자**: {date.today()} | **진행상태**: `{status}` | **발주기관**: `{org}` ({site})
+**작성일자**: {date.today()} | **진행상태**: `{status}` | **발주기관**: `{_safe_md_cell(org)}` ({_safe_md_cell(site)})
 
 ---
 
@@ -283,15 +294,15 @@ def generate_bid_review_markdown(bid: dict) -> str:
 
 | 항목 | 내용 |
 | :--- | :--- |
-| **공고명** | {title} |
-| **발주기관** | {org} ({site}) |
-| **공고 등록일** | {reg_date} |
-| **제출 마감일시** | **{deadline} ({d_day})** |
-| **제출 방식** | {submit_type} |
-| **추정 사업예산** | {budget} |
-| **사업 수행기간** | {duration} |
-| **기술/가격 평가** | {evaluation} |
-| **원문 공고 링크** | [{title}]({origin_url}) |
+| **공고명** | {_safe_md_cell(title)} |
+| **발주기관** | {_safe_md_cell(org)} ({_safe_md_cell(site)}) |
+| **공고 등록일** | {_safe_md_cell(reg_date)} |
+| **제출 마감일시** | **{_safe_md_cell(deadline)} ({_safe_md_cell(d_day)})** |
+| **제출 방식** | {_safe_md_cell(submit_type)} |
+| **추정 사업예산** | {_safe_md_cell(budget)} |
+| **사업 수행기간** | {_safe_md_cell(duration)} |
+| **기술/가격 평가** | {_safe_md_cell(evaluation)} |
+| **원문 공고 링크** | {origin_link_md} |
 
 ---
 
@@ -346,7 +357,12 @@ def generate_bid_review_html(bid: dict) -> str:
     fit_score = bid.get("fit_score")
     fit_text = f"{int(fit_score)}점" if fit_score is not None and str(fit_score).isdigit() else "미분석"
     status = _safe_escape(bid.get("status"), "검토중")
-    origin_url = _safe_str(bid.get("origin_url"), "")
+    origin_raw = _safe_str(bid.get("origin_url"), "").strip()
+    if origin_raw.startswith(("http://", "https://")):
+        origin_escaped = html.escape(origin_raw)
+        origin_link_html = f'<a href="{origin_escaped}" target="_blank">{origin_escaped}</a>'
+    else:
+        origin_link_html = '<span style="color:#888;">링크 없음</span>'
 
     budget = _safe_escape(bid.get("budget") or _extract_evidence_field(bid.get("evidence"), "budget"))
     duration = _safe_escape(bid.get("duration") or _extract_evidence_field(bid.get("evidence"), "duration"))
@@ -544,7 +560,7 @@ def generate_bid_review_html(bid: dict) -> str:
     </tr>
     <tr>
       <th>원본게시글</th>
-      <td colspan="3"><a href="{origin_url}" target="_blank">{origin_url or '링크 없음'}</a></td>
+      <td colspan="3">{origin_link_html}</td>
     </tr>
   </table>
 
