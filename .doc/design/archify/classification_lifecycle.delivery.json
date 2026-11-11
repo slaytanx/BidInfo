@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "77df183e-295a-4221-8c32-7f23c7d8b97d",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/Users/ygyoo/Documents/Code/BidInfo/.archify/lifecycle-classification-state-20261109-154700/candidate.json",
+  "output": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/classification_lifecycle.html",
+  "specification": {
+    "sha256": "7eccb08f930fd58e47f4271ffaeecd8a094a91e4cdfb14bea23fa0b05417c6ab",
+    "bytes": 3996
+  },
+  "artifact": {
+    "sha256": "e4b408197f7247d5959400353e055a04e7e92f759bf7830d2f6abbec190bd443",
+    "bytes": 846013
+  }
+}

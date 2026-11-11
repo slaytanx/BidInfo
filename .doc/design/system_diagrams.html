@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BidInfo 시스템 아키텍처 및 파이프라인 도식 (System Architecture Diagrams)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --border-main: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --accent-coral: #e11d48;
+      --accent-emerald: #059669;
+      --accent-amber: #d97706;
+      --accent-purple: #7c3aed;
+      --font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      padding: 32px 24px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--border-main);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #eff6ff;
+      color: var(--accent);
+      border: 1px solid #bfdbfe;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    p.lead {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    .toc-nav {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .toc-nav a {
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border-main);
+      border-radius: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .toc-nav a:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    section.diagram-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 12px;
+      padding: 28px 24px;
+      margin-bottom: 36px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    .section-header {
+      margin-bottom: 20px;
+    }
+
+    .section-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #1e293b;
+    }
+
+    .section-header .desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Diagram Frame & Scroll according to diagram-rules.md */
+    .diagram-frame {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+    }
+
+    .diagram-scroll {
+      width: 100%;
+      overflow-x: auto;
+      background: #fafaf9;
+      border: 1px solid #f1f5f9;
+      border-radius: 8px;
+      padding: 20px 16px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .diagram-svg {
+      width: 100%;
+      max-width: var(--diagram-width, 1000px);
+      height: auto;
+      display: block;
+      font-family: var(--font-sans);
+    }
+
+    /* SVG typography & elements */
+    .node-title {
+      font-weight: 700;
+      font-size: 13px;
+      fill: #0f172a;
+    }
+    .node-sub {
+      font-size: 11px;
+      fill: #475569;
+    }
+    .node-tag {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .edge-label {
+      font-size: 10px;
+      font-weight: 600;
+      fill: #334155;
+    }
+    .group-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    /* Print Styles (@media print) per diagram-rules.md */
+    @page {
+      size: A4 portrait;
+      margin: 15mm 12mm 15mm 12mm;
+    }
+
+    @media print {
+      body {
+        background: #ffffff !important;
+        padding: 0 !important;
+      }
+      .toc-nav {
+        display: none !important;
+      }
+      section.diagram-section {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 10px 0 !important;
+        margin-bottom: 24px !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+      .diagram-shell, .diagram-frame, .diagram-scroll {
+        overflow: visible !important;
+        padding: 4px 0 !important;
+        margin: 8px 0 !important;
+        width: 100% !important;
+        background: transparent !important;
+        border: none !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      .diagram-frame svg, .diagram-shell svg, .diagram-svg {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        display: block !important;
+        margin: 0 auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="badge">BidInfo System Architecture v2.0</div>
+    <h1>입찰정보 수집·분석 시스템 도식 명세서</h1>
+    <p class="lead">최신 소스코드 및 스펙(실무용 리포트 내보내기, Q&A 청크 필터링, 연도 롤오버 보정, JSON Preamble 슬라이싱 등)을 반영한 최신 도식 명세서입니다.</p>
+    <nav class="toc-nav">
+      <a href="#diagram-1">1. 5계층 아키텍처</a>
+      <a href="#diagram-2">2. 엔드투엔드 파이프라인</a>
+      <a href="#diagram-3">3. 문서 파서 엔진 분기</a>
+      <a href="#diagram-4">4. 사실 검증 & Q&A 워크플로우</a>
+    </nav>
+  </header>
+
+  <!-- DIAGRAM 1: SYSTEM ARCHITECTURE -->
+  <section id="diagram-1" class="diagram-section">
+    <div class="section-header">
+      <h2>1. 전체 시스템 5계층 아키텍처 (Component Map)</h2>
+      <p class="desc">UI 레이어, 파이프라인 및 트래픽 제어, 수집·파싱 엔진, AI 심층 분석 엔진, WAL 스토리지 인프라의 최신 물리적 배치도입니다.</p>
+    </div>
+
+    <figure class="diagram-frame">
+      <div class="diagram-scroll">
+        <svg class="diagram-svg" viewBox="0 0 960 540" style="--diagram-width: 960px;" role="img" aria-labelledby="arch-title arch-desc">
+          <title id="arch-title">BidInfo 시스템 5계층 아키텍처 구성도</title>
+          <desc id="arch-desc">프론트엔드 UI(보고서 내보내기 포함), 오케스트레이션 및 트래픽 제어, 수집 파싱 엔진, AI 심층 분석 엔진, 데이터 스토리지의 5계층 구조를 표현합니다.</desc>
+
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b"/>
+            </marker>
+            <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb"/>
+            </marker>
+            <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+            </marker>
+          </defs>
+
+          <!-- 1. UI Layer Container -->
+          <rect x="20" y="20" width="920" height="88" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <text x="36" y="42" class="group-title" fill="#1e293b">1. 프론트엔드 UI 레이어 (Streamlit Multi-Tab)</text>
+          
+          <!-- UI Nodes -->
+          <g transform="translate(36, 52)">
+            <rect width="200" height="46" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">대시보드 (app.py)</text>
+            <text x="12" y="36" class="node-sub">공고 필터링 • Q&A 챗봇</text>
+            <text x="145" y="22" class="node-tag" fill="#2563eb">Main UI</text>
+          </g>
+          <g transform="translate(252, 52)">
+            <rect width="220" height="46" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">보고서 내보내기 (export)</text>
+            <text x="12" y="36" class="node-sub">21개 컬럼 엑셀 • MD/HTML</text>
+            <text x="160" y="22" class="node-tag" fill="#059669">Report</text>
+          </g>
+          <g transform="translate(488, 52)">
+            <rect width="210" height="46" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">관리자 콘솔 (admin)</text>
+            <text x="12" y="36" class="node-sub">모델 설정 • R2 동기화</text>
+            <text x="155" y="22" class="node-tag" fill="#64748b">Config</text>
+          </g>
+          <g transform="translate(714, 52)">
+            <rect width="210" height="46" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">분류 사전 (taxonomy)</text>
+            <text x="12" y="36" class="node-sub">3축 키워드/동의어 편집</text>
+            <text x="155" y="22" class="node-tag" fill="#64748b">Review</text>
+          </g>
+
+          <!-- Connector UI -> Pipeline -->
+          <path d="M 136 98 L 136 128" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-accent)"/>
+          <rect x="144" y="104" width="118" height="18" rx="4" fill="#ffffff" stroke="#e2e8f0"/>
+          <text x="150" y="117" class="edge-label">실시간 콜백 / 제어</text>
+
+          <!-- 2. Pipeline Orchestration Container -->
+          <rect x="20" y="134" width="920" height="68" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+          <text x="36" y="154" class="group-title" fill="#1e40af">2. 파이프라인 및 트래픽 제어 레이어 (pipeline.py)</text>
+
+          <g transform="translate(36, 162)">
+            <rect width="380" height="30" rx="4" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+            <text x="12" y="20" class="node-title" fill="#1e3a8a">Pipeline Orchestrator (배치 제어 / st.status 콜백)</text>
+          </g>
+          <g transform="translate(432, 162)">
+            <rect width="320" height="30" rx="4" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+            <text x="12" y="20" class="node-title" fill="#1e3a8a">Rate Limiter (0.3s 대기 / Retry-After 백오프)</text>
+          </g>
+          <g transform="translate(768, 162)">
+            <rect width="156" height="30" rx="4" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+            <text x="12" y="20" class="node-title" fill="#1e3a8a">db_stamp 캐시 핑거프린트</text>
+          </g>
+
+          <!-- Connectors Pipeline -> 3 & 4 -->
+          <path d="M 226 194 L 226 226" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-accent)"/>
+          <path d="M 696 194 L 696 226" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-accent)"/>
+
+          <!-- 3. Ingestion & Parsing Container (Left) -->
+          <rect x="20" y="232" width="440" height="180" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+          <text x="36" y="254" class="group-title" fill="#0f172a">3. 금융권 수집 및 파싱 엔진</text>
+
+          <g transform="translate(36, 266)">
+            <rect width="408" height="42" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="20" class="node-title">웹 크롤러 (crawler.py)</text>
+            <text x="12" y="34" class="node-sub">TLS 위장 • Latin-1 복원 • 확정 공고 단독 수집 (collect_confirmed)</text>
+          </g>
+          <g transform="translate(36, 316)">
+            <rect width="408" height="42" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="20" class="node-title">문서 파서 (hwp_parser.py)</text>
+            <text x="12" y="34" class="node-sub">HWP OLE • HWPX • PyMuPDF Markdown • 서약서 제외 & RFP 보호</text>
+          </g>
+          <g transform="translate(36, 366)">
+            <rect width="408" height="34" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="21" class="node-sub">선별적 OCR (Tesseract kor+eng) • SHA-256 디스크 문서 캐시</text>
+          </g>
+
+          <!-- 4. AI & LLM Engine Container (Right) -->
+          <rect x="480" y="232" width="460" height="180" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+          <text x="496" y="254" class="group-title" fill="#0f172a">4. AI 분류 및 심층 분석 엔진</text>
+
+          <g transform="translate(496, 266)">
+            <rect width="428" height="42" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="20" class="node-title">3축 택소노미 분류 (classification / taxonomy)</text>
+            <text x="12" y="34" class="node-sub">규칙 분류 • 명백한 비IT 배제 • 수동 분류 값 불변 보호</text>
+          </g>
+          <g transform="translate(496, 316)">
+            <rect width="428" height="42" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+            <text x="12" y="20" class="node-title">심층 사실 분석 & Q&A (ollama_summary.py)</text>
+            <text x="12" y="34" class="node-sub">9,000자 청킹 • 사실 인용 검증 (_ground) • Q&A 상위 3개 청크 선별</text>
+          </g>
+          <g transform="translate(496, 366)">
+            <rect width="428" height="34" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="21" class="node-sub">LLM Manager: OpenRouter (세마포어 2) / 로컬 Ollama (1) / Preamble 슬라이싱</text>
+          </g>
+
+          <!-- Connectors 3 & 4 -> Storage -->
+          <path d="M 236 412 L 236 442" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+          <path d="M 710 412 L 710 442" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+          <!-- 5. Storage Layer Container -->
+          <rect x="20" y="448" width="920" height="74" rx="8" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.5"/>
+          <text x="36" y="468" class="group-title" fill="#065f46">5. 데이터 및 인프라 스토리지 레이어</text>
+
+          <g transform="translate(36, 476)">
+            <rect width="340" height="34" rx="4" fill="#ffffff" stroke="#6ee7b7" stroke-width="1"/>
+            <text x="12" y="22" class="node-title" fill="#064e3b">SQLite 3 WAL DB (bids, sites, settings)</text>
+          </g>
+          <g transform="translate(392, 476)">
+            <rect width="260" height="34" rx="4" fill="#ffffff" stroke="#6ee7b7" stroke-width="1"/>
+            <text x="12" y="22" class="node-title" fill="#064e3b">문서/분석 캐시 (data/cache/)</text>
+          </g>
+          <g transform="translate(668, 476)">
+            <rect width="256" height="34" rx="4" fill="#ffffff" stroke="#6ee7b7" stroke-width="1"/>
+            <text x="12" y="22" class="node-title" fill="#064e3b">Cloudflare R2 오브젝트 스토리지</text>
+          </g>
+        </svg>
+      </div>
+    </figure>
+  </section>
+
+  <!-- DIAGRAM 2: END-TO-END PIPELINE -->
+  <section id="diagram-2" class="diagram-section">
+    <div class="section-header">
+      <h2>2. 수집 및 전처리 엔드투엔드 파이프라인 (E2E Data Flow)</h2>
+      <p class="desc">3대 조건 중복 판별, 파일명 복원, 청킹/질의, Preamble 슬라이싱, 사실 검증 및 캐시 무효화와 보고서 출력까지의 흐름입니다.</p>
+    </div>
+
+    <figure class="diagram-frame">
+      <div class="diagram-scroll">
+        <svg class="diagram-svg" viewBox="0 0 960 480" style="--diagram-width: 960px;" role="img" aria-labelledby="pipe-title pipe-desc">
+          <title id="pipe-title">수집 및 전처리 엔드투엔드 파이프라인 흐름도</title>
+          <desc id="pipe-desc">수집 진입점부터 3대 조건 중복 검사, 규칙 분류, 본문 파싱, LLM 분석, 사실 검증, WAL 적재 및 보고서 내보내기 과정을 도식화합니다.</desc>
+
+          <defs>
+            <marker id="pipe-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569"/>
+            </marker>
+            <marker id="pipe-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb"/>
+            </marker>
+            <marker id="pipe-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#e11d48"/>
+            </marker>
+          </defs>
+
+          <!-- Step 1: Web Scraping -->
+          <g transform="translate(30, 40)">
+            <rect width="180" height="70" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 1. 수집</text>
+            <text x="16" y="44" class="node-title">게시판 목록 스크래핑</text>
+            <text x="16" y="58" class="node-sub">TLS 위장 • 페이징 순회</text>
+          </g>
+
+          <!-- Step 2: 3-Conditions Dedup -->
+          <g transform="translate(260, 40)">
+            <rect width="200" height="70" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 2. 3대 조건 검사</text>
+            <text x="16" y="44" class="node-title">existing_bid_ids 확인</text>
+            <text x="16" y="58" class="node-sub">분석=성공 & 추출=성공 & 다운로드=성공</text>
+          </g>
+
+          <!-- Step 3: Rule Classification -->
+          <g transform="translate(510, 40)">
+            <rect width="200" height="70" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 3. 1차 규칙 분류</text>
+            <text x="16" y="44" class="node-title">비IT 배제 & 확실성 검사</text>
+            <text x="16" y="58" class="node-sub">명백한 비IT 즉시 제외</text>
+          </g>
+
+          <!-- Branch: Pending / Excluded -->
+          <g transform="translate(760, 40)">
+            <rect width="170" height="70" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#e11d48">Branch 1. 보류/제외</text>
+            <text x="14" y="44" class="node-title" fill="#9f1239">판단 보류 / 수집 제외</text>
+            <text x="14" y="58" class="node-sub" fill="#be123c">메타데이터만 보존</text>
+          </g>
+
+          <!-- Arrows Row 1 -->
+          <path d="M 210 75 L 260 75" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#pipe-arrow)"/>
+          <path d="M 460 75 L 510 75" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#pipe-arrow)"/>
+          <path d="M 710 75 L 760 75" fill="none" stroke="#e11d48" stroke-width="1.5" marker-end="url(#pipe-red)"/>
+
+          <!-- Arrow Down: Certain -> Step 4 -->
+          <path d="M 610 110 L 610 160" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#pipe-accent)"/>
+          <rect x="618" y="125" width="84" height="18" rx="3" fill="#ffffff" stroke="#cbd5e1"/>
+          <text x="622" y="138" class="edge-label" fill="#2563eb">IT 확실 판정</text>
+
+          <!-- Step 4: Attachment & Filename Restoration -->
+          <g transform="translate(500, 166)">
+            <rect width="220" height="74" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 4. 첨부 파싱</text>
+            <text x="16" y="44" class="node-title">본문 다운로드 & 파싱</text>
+            <text x="16" y="58" class="node-sub">파일명 복원 • HWP/PDF 표 복원</text>
+          </g>
+
+          <!-- Arrow Left: Step 4 -> Step 5 -->
+          <path d="M 500 203 L 420 203" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#pipe-arrow)"/>
+
+          <!-- Step 5: Chunking & Fact Extraction -->
+          <g transform="translate(190, 166)">
+            <rect width="230" height="74" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 5. LLM 질의 & 파싱</text>
+            <text x="16" y="44" class="node-title">9,000자 청킹 & Preamble 회피</text>
+            <text x="16" y="58" class="node-sub">최외각 중괄호 슬라이싱 • Retry-After</text>
+          </g>
+
+          <!-- Arrow Down: Step 5 -> Step 6 -->
+          <path d="M 305 240 L 305 290" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#pipe-accent)"/>
+
+          <!-- Step 6: Fact Grounding & Validation -->
+          <g transform="translate(190, 296)">
+            <rect width="230" height="74" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#1d4ed8">Step 6. 사실 검증</text>
+            <text x="16" y="44" class="node-title" fill="#1e3a8a">원문 인용 검증 (_ground)</text>
+            <text x="16" y="58" class="node-sub" fill="#1d4ed8">원문 불일치 시 기각 • 형식 검증</text>
+          </g>
+
+          <!-- Arrow Right: Step 6 -> Step 7 -->
+          <path d="M 420 333 L 490 333" fill="none" stroke="#475569" stroke-width="1.5" marker-end="url(#pipe-arrow)"/>
+
+          <!-- Step 7: Score & Summary Merge -->
+          <g transform="translate(490, 296)">
+            <rect width="230" height="74" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#2563eb">Step 7. 통합 병합</text>
+            <text x="16" y="44" class="node-title">적합도 산출 & 요약 보존</text>
+            <text x="16" y="58" class="node-sub">0~100점 • 실패 시 정상 요약 유지</text>
+          </g>
+
+          <!-- Arrow Right: Step 7 -> Step 8 -->
+          <path d="M 720 333 L 750 333 L 750 410" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#pipe-arrow)"/>
+
+          <!-- Step 8: Database Commit & Report Ready -->
+          <g transform="translate(490, 416)">
+            <rect width="440" height="48" rx="6" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.5"/>
+            <text x="16" y="22" class="node-title" fill="#065f46">SQLite WAL 저장 & db_stamp 핑거프린트 갱신</text>
+            <text x="16" y="38" class="node-sub" fill="#047857">실무용 엑셀(cached_filtered_excel) & 제안 검토 보고서 즉시 내보내기</text>
+          </g>
+        </svg>
+      </div>
+    </figure>
+  </section>
+
+  <!-- DIAGRAM 3: DOCUMENT PARSER ENGINE -->
+  <section id="diagram-3" class="diagram-section">
+    <div class="section-header">
+      <h2>3. 지능형 문서 파싱 엔진 및 OCR 분기 구조 (Document Parser)</h2>
+      <p class="desc">HWP/HWPX/PDF/DOCX 포맷별 파서 라우팅, 행정 서약서 자동 필터링 및 표 복원 처리 흐름입니다.</p>
+    </div>
+
+    <figure class="diagram-frame">
+      <div class="diagram-scroll">
+        <svg class="diagram-svg" viewBox="0 0 960 440" style="--diagram-width: 960px;" role="img" aria-labelledby="parser-title parser-desc">
+          <title id="parser-title">지능형 문서 파싱 엔진 및 OCR 분기 구조도</title>
+          <desc id="parser-desc">첨부파일 유입 시 캐시 확인, 단순 서식 제외, 포맷별 파서 라우팅 및 OCR 결합 과정을 도식화합니다.</desc>
+
+          <defs>
+            <marker id="parse-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b"/>
+            </marker>
+          </defs>
+
+          <!-- Input File -->
+          <g transform="translate(30, 160)">
+            <rect width="160" height="70" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#2563eb">Input Document</text>
+            <text x="14" y="44" class="node-title">첨부 문서 인입</text>
+            <text x="14" y="58" class="node-sub">PDF, HWP, HWPX, DOCX</text>
+          </g>
+
+          <!-- Cache Check -->
+          <g transform="translate(230, 160)">
+            <rect width="180" height="70" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#059669">SHA-256 Cache</text>
+            <text x="14" y="44" class="node-title">디스크 캐시 확인</text>
+            <text x="14" y="58" class="node-sub">내용+파서버전+OCR 설정</text>
+          </g>
+
+          <path d="M 190 195 L 230 195" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+
+          <!-- Admin Filter (Skip Reason) -->
+          <g transform="translate(450, 160)">
+            <rect width="190" height="70" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#d97706">Security & Admin</text>
+            <text x="14" y="44" class="node-title">단순 서식 제외 검사</text>
+            <text x="14" y="58" class="node-sub">RFP/공고 화이트리스트 보호</text>
+          </g>
+
+          <path d="M 410 195 L 450 195" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+
+          <!-- Routing to Parsers -->
+          <!-- 1. HWP 5.x -->
+          <g transform="translate(680, 30)">
+            <rect width="250" height="52" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">HWP 5.x (OLE 바이트스트림)</text>
+            <text x="12" y="38" class="node-sub">zlib 압축 해제 • TABLE/셀 복원 Markdown</text>
+          </g>
+
+          <!-- 2. HWPX -->
+          <g transform="translate(680, 92)">
+            <rect width="250" height="52" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">HWPX (Open Ant XML)</text>
+            <text x="12" y="38" class="node-sub">문단 순서 보존 • 표 Markdown 변환</text>
+          </g>
+
+          <!-- 3. PDF + OCR -->
+          <g transform="translate(680, 154)">
+            <rect width="250" height="66" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+            <text x="12" y="22" class="node-title" fill="#1e3a8a">PDF (PyMuPDF 구조화 추출)</text>
+            <text x="12" y="38" class="node-sub">텍스트 부족 시 Tesseract OCR 선별 결합</text>
+            <text x="12" y="52" class="node-tag" fill="#2563eb">Smart OCR Fallback</text>
+          </g>
+
+          <!-- 4. DOCX -->
+          <g transform="translate(680, 230)">
+            <rect width="250" height="52" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">DOCX (Word XML 순차 문단)</text>
+            <text x="12" y="38" class="node-sub">mc:Fallback 중복 제거 • 평문 연속성 보존</text>
+          </g>
+
+          <!-- 5. XLSX / Pandoc -->
+          <g transform="translate(680, 292)">
+            <rect width="250" height="52" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+            <text x="12" y="22" class="node-title">XLSX (CSV 변환) / Pandoc (gfm)</text>
+            <text x="12" y="38" class="node-sub">시트별 CSV 병합 • PPTX/HTML 변환</text>
+          </g>
+
+          <!-- 6. Legacy OLE DOC Rejection -->
+          <g transform="translate(680, 354)">
+            <rect width="250" height="52" rx="4" fill="#fff1f2" stroke="#fecdd3" stroke-width="1"/>
+            <text x="12" y="22" class="node-title" fill="#9f1239">구형 OLE DOC</text>
+            <text x="12" y="38" class="node-sub" fill="#be123c">안전 거부 ('DOCX 변환 필요' 사유 명시)</text>
+          </g>
+
+          <!-- Connectors from Admin Filter to Parsers (Orthogonal) -->
+          <path d="M 640 195 L 660 195 L 660 56 L 680 56" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+          <path d="M 640 195 L 660 195 L 660 118 L 680 118" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+          <path d="M 640 195 L 680 195" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#parse-arrow)"/>
+          <path d="M 640 195 L 660 195 L 660 256 L 680 256" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+          <path d="M 640 195 L 660 195 L 660 318 L 680 318" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+          <path d="M 640 195 L 660 195 L 660 380 L 680 380" fill="none" stroke="#e11d48" stroke-width="1.5" marker-end="url(#parse-arrow)"/>
+        </svg>
+      </div>
+    </figure>
+  </section>
+
+  <!-- DIAGRAM 4: LLM GROUNDING & QA WORKFLOW -->
+  <section id="diagram-4" class="diagram-section">
+    <div class="section-header">
+      <h2>4. LLM 사실 추출/검증 및 서류 Q&A 워크플로우</h2>
+      <p class="desc">환각 방지를 위한 원문 인용 대조(_ground) 및 50~100페이지 대용량 RFP 질의 시 상위 3개 청크를 선별하는 최적화 구조입니다.</p>
+    </div>
+
+    <figure class="diagram-frame">
+      <div class="diagram-scroll">
+        <svg class="diagram-svg" viewBox="0 0 960 440" style="--diagram-width: 960px;" role="img" aria-labelledby="ground-title ground-desc">
+          <title id="ground-title">LLM 사실 추출/검증 및 서류 Q&A 워크플로우</title>
+          <desc id="ground-desc">문맥 청킹부터 키워드 발췌, LLM 응답 수신, 원문 인용 대조, 형식 검증 및 서류 Q&A 최적화 과정을 도식화합니다.</desc>
+
+          <defs>
+            <marker id="grd-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b"/>
+            </marker>
+            <marker id="grd-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669"/>
+            </marker>
+            <marker id="grd-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#e11d48"/>
+            </marker>
+          </defs>
+
+          <!-- Top Section: Core Grounding Pipeline -->
+          <g transform="translate(30, 40)">
+            <rect width="200" height="74" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#2563eb">1. Chunk & Passages</text>
+            <text x="14" y="44" class="node-title">9,000자 청크 분할</text>
+            <text x="14" y="58" class="node-sub">마감•서류•예산 3대 그룹 발췌</text>
+          </g>
+
+          <g transform="translate(260, 40)">
+            <rect width="220" height="74" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#1d4ed8">2. Dual LLM Call</text>
+            <text x="14" y="44" class="node-title" fill="#1e3a8a">클라우드/로컬 모델 질의</text>
+            <text x="14" y="58" class="node-sub">OpenRouter (세마2) / Ollama (1)</text>
+          </g>
+
+          <g transform="translate(510, 40)">
+            <rect width="210" height="74" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="14" y="24" class="node-tag" fill="#2563eb">3. Resilient Parse</text>
+            <text x="14" y="44" class="node-title">parse_json 내결함성</text>
+            <text x="14" y="58" class="node-sub">최외각 중괄호 정규식 슬라이싱</text>
+          </g>
+
+          <!-- Connectors Top -->
+          <path d="M 230 77 L 260 77" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#grd-arrow)"/>
+          <path d="M 480 77 L 510 77" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#grd-arrow)"/>
+
+          <!-- Arrow Down to Step 4 -->
+          <path d="M 615 114 L 615 160" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#grd-arrow)"/>
+
+          <!-- Step 4: Quote Grounding -->
+          <g transform="translate(480, 166)">
+            <rect width="270" height="80" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#b45309">4. Grounding Check</text>
+            <text x="16" y="44" class="node-title" fill="#78350f">원문 인용 대조 (_ground)</text>
+            <text x="16" y="58" class="node-sub" fill="#92400e">quote in raw_text 여부 전수 검증</text>
+          </g>
+
+          <!-- Branch Fail -->
+          <path d="M 750 206 L 800 206" fill="none" stroke="#e11d48" stroke-width="2" marker-end="url(#grd-red)"/>
+          <g transform="translate(800, 172)">
+            <rect width="130" height="68" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="1.5"/>
+            <text x="10" y="22" class="node-tag" fill="#e11d48">불일치 (환각)</text>
+            <text x="10" y="40" class="node-title" fill="#9f1239">사실 기각</text>
+            <text x="10" y="54" class="node-sub" fill="#be123c">'확인 불가' 처리</text>
+          </g>
+
+          <!-- Branch Pass to Step 5 -->
+          <path d="M 480 206 L 430 206" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#grd-green)"/>
+          <g transform="translate(180, 166)">
+            <rect width="250" height="80" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+            <text x="16" y="24" class="node-tag" fill="#059669">5. Format Validation</text>
+            <text x="16" y="44" class="node-title">정규식 형식 검증</text>
+            <text x="16" y="58" class="node-sub">날짜/금액 숫자 포함 • 모호성 제거</text>
+          </g>
+
+          <!-- Bottom: Q&A Engine Highlights -->
+          <g transform="translate(30, 280)">
+            <rect width="900" height="130" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+            <text x="24" y="306" class="group-title" fill="#1e293b">서류 질의응답 (Q&A) 최적화 워크플로우 (answer_bid_question)</text>
+            
+            <g transform="translate(24, 320)">
+              <rect width="260" height="70" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+              <text x="12" y="22" class="node-tag" fill="#2563eb">Q1. 질문 키워드 랭킹</text>
+              <text x="12" y="42" class="node-title">키워드 빈도 채점</text>
+              <text x="12" y="56" class="node-sub">2글자 이상 의미어 추출</text>
+            </g>
+
+            <path d="M 284 355 L 324 355" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#grd-arrow)"/>
+
+            <g transform="translate(324, 320)">
+              <rect width="260" height="70" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+              <text x="12" y="22" class="node-tag" fill="#059669">Q2. 상위 3개 청크 선별</text>
+              <text x="12" y="42" class="node-title">Top-3 Chunk 질의</text>
+              <text x="12" y="56" class="node-sub">토큰 낭비 및 지연 방지</text>
+            </g>
+
+            <path d="M 584 355 L 624 355" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#grd-arrow)"/>
+
+            <g transform="translate(624, 320)">
+              <rect width="252" height="70" rx="6" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1"/>
+              <text x="12" y="22" class="node-tag" fill="#047857">Q3. 인용문 일치 검증</text>
+              <text x="12" y="42" class="node-title" fill="#064e3b">원문 근거 매핑</text>
+              <text x="12" y="56" class="node-sub" fill="#047857">quote in chunk 확인 시만 반환</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </figure>
+  </section>
+
+</div>
+
+</body>
+</html>

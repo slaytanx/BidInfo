@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "erd",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.archify/erd-database-schema-20261109-154700/candidate.json",
+    "sha256": "11d005cedd98d45fb65d6ce62917ddf4921c6b3172ce771ca3a3ef42425cd830",
+    "bytes": 4805
+  },
+  "artifact": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/database_erd.html",
+    "sha256": "03997767eaf6a8f08eaeec10057f892268b359f40708e701bf25d800358669fe",
+    "bytes": 858113
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/database_erd.finalize.json",
+    "summaryReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/database_erd.finalize-summary.json",
+    "browserCheckReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/database_erd.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-05T14:35:42.302Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1831,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

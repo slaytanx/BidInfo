@@ -1,0 +1,240 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.archify/architecture-system-overview-20261109-154700/candidate.json",
+    "sha256": "6b545d15932055ff64226734b021eb396e616d4da774e84cb1f5547777b88388",
+    "bytes": 6756
+  },
+  "artifact": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/system_architecture.html",
+    "sha256": "dec534261cad7b4a55bbc449cf8606af0f3a98429cae305f5ec82ae5b55474fd",
+    "bytes": 870682
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/system_architecture.finalize.json",
+    "summaryReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/system_architecture.finalize-summary.json",
+    "browserCheckReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/system_architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-05T14:35:42.302Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2075,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 3,
+      "routesOverSuggestedBends": 9,
+      "routesOverSuggestedStretch": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "ui-to-pipeline",
+            "from": "ui_main",
+            "to": "pipeline",
+            "label": "dispatch",
+            "collectionIndex": 0,
+            "artifactIndex": 1
+          },
+          "right": {
+            "id": "db-to-stamp",
+            "from": "sqlite_db",
+            "to": "stamp_cache",
+            "label": "update stamp",
+            "collectionIndex": 12,
+            "artifactIndex": 13
+          },
+          "point": [
+            116,
+            156
+          ]
+        },
+        {
+          "left": {
+            "id": "parser-to-ocr",
+            "from": "parser",
+            "to": "ocr",
+            "label": "scanned fallback",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "right": {
+            "id": "pipeline-to-summary",
+            "from": "pipeline",
+            "to": "summary_engine",
+            "label": "deep analysis",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "point": [
+            473,
+            384
+          ]
+        },
+        {
+          "left": {
+            "id": "parser-to-doccache",
+            "from": "parser",
+            "to": "doc_cache",
+            "label": "cache text",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "right": {
+            "id": "summary-to-db",
+            "from": "summary_engine",
+            "to": "sqlite_db",
+            "label": "commit bids",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "point": [
+            267,
+            453.4
+          ]
+        }
+      ],
+      "detours": [
+        {
+          "relationship": {
+            "id": "ui-to-export",
+            "from": "ui_main",
+            "to": "ui_export",
+            "label": "export view",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "bends": 3,
+          "stretch": 1.331
+        },
+        {
+          "relationship": {
+            "id": "crawler-to-parser",
+            "from": "crawler",
+            "to": "parser",
+            "label": "downloaded docs",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "bends": 3,
+          "stretch": 1.308
+        },
+        {
+          "relationship": {
+            "id": "parser-to-ocr",
+            "from": "parser",
+            "to": "ocr",
+            "label": "scanned fallback",
+            "collectionIndex": 5,
+            "artifactIndex": 6
+          },
+          "bends": 3,
+          "stretch": 1.308
+        },
+        {
+          "relationship": {
+            "id": "parser-to-doccache",
+            "from": "parser",
+            "to": "doc_cache",
+            "label": "cache text",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "bends": 4,
+          "stretch": 1.859
+        },
+        {
+          "relationship": {
+            "id": "pipeline-to-classifier",
+            "from": "pipeline",
+            "to": "classifier",
+            "label": "title classify",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "bends": 3,
+          "stretch": 1.331
+        },
+        {
+          "relationship": {
+            "id": "pipeline-to-summary",
+            "from": "pipeline",
+            "to": "summary_engine",
+            "label": "deep analysis",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 4,
+          "stretch": 1.478
+        },
+        {
+          "relationship": {
+            "id": "summary-to-llm",
+            "from": "summary_engine",
+            "to": "llm_manager",
+            "label": "prompt/json",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 3,
+          "stretch": 1.282
+        },
+        {
+          "relationship": {
+            "id": "summary-to-db",
+            "from": "summary_engine",
+            "to": "sqlite_db",
+            "label": "commit bids",
+            "collectionIndex": 11,
+            "artifactIndex": 12
+          },
+          "bends": 3,
+          "stretch": 1
+        }
+      ],
+      "truncated": true
+    },
+    "hints": [
+      "ui_main → pipeline crosses sqlite_db → stamp_cache: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "parser → ocr crosses pipeline → summary_engine: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "parser → doc_cache crosses summary_engine → sqlite_db: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "ui_main → ui_export needs 3 bends: move node ui_main or ui_export so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "crawler → parser needs 3 bends: move node crawler or parser so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "parser → ocr needs 3 bends: move node parser or ocr so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "parser → doc_cache needs 4 bends: move node parser or doc_cache so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "pipeline → classifier needs 3 bends: move node pipeline or classifier so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

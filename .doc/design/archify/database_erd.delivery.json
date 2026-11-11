@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fcf746f0-2fe2-4318-9fbb-b928d0134c65",
+  "status": "current",
+  "command": "deliver",
+  "type": "erd",
+  "input": "/Users/ygyoo/Documents/Code/BidInfo/.archify/erd-database-schema-20261109-154700/candidate.json",
+  "output": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/database_erd.html",
+  "specification": {
+    "sha256": "11d005cedd98d45fb65d6ce62917ddf4921c6b3172ce771ca3a3ef42425cd830",
+    "bytes": 4805
+  },
+  "artifact": {
+    "sha256": "03997767eaf6a8f08eaeec10057f892268b359f40708e701bf25d800358669fe",
+    "bytes": 858113
+  }
+}

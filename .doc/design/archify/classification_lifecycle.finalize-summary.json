@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "lifecycle",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.archify/lifecycle-classification-state-20261109-154700/candidate.json",
+    "sha256": "7eccb08f930fd58e47f4271ffaeecd8a094a91e4cdfb14bea23fa0b05417c6ab",
+    "bytes": 3996
+  },
+  "artifact": {
+    "path": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/classification_lifecycle.html",
+    "sha256": "e4b408197f7247d5959400353e055a04e7e92f759bf7830d2f6abbec190bd443",
+    "bytes": 846013
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/classification_lifecycle.finalize.json",
+    "summaryReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/classification_lifecycle.finalize-summary.json",
+    "browserCheckReceipt": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/classification_lifecycle.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-05T14:35:42.302Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 1776,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "t-pending-manual",
+            "from": "pending_review",
+            "to": "manual_confirmed",
+            "label": "user tags",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "right": {
+            "id": "t-pending-wait",
+            "from": "pending_review",
+            "to": "collect_wait",
+            "label": "needs file",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "point": [
+            731.5,
+            282
+          ],
+          "sharedNode": "pending_review"
+        }
+      ],
+      "detours": [],
+      "truncated": false
+    },
+    "repair": "Advisory only: this mode places or routes these relationships itself. Report them; do not remove relationships or meaning to reduce crossings."
+  }
+}

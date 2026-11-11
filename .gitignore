@@ -14,3 +14,6 @@ graphify-out/
 .agents/teamwork/
 
 .claude/launch.json
+.claude/settings.local.json
+.archify/
+.pytest_cache/

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "96d29c57-542e-46f5-873f-ed1a8d860636",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/ygyoo/Documents/Code/BidInfo/.archify/architecture-system-overview-20261109-154700/candidate.json",
+  "output": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/system_architecture.html",
+  "specification": {
+    "sha256": "6b545d15932055ff64226734b021eb396e616d4da774e84cb1f5547777b88388",
+    "bytes": 6756
+  },
+  "artifact": {
+    "sha256": "dec534261cad7b4a55bbc449cf8606af0f3a98429cae305f5ec82ae5b55474fd",
+    "bytes": 870682
+  }
+}

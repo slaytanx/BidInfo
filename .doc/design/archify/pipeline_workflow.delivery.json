@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2bd6c84c-7fbc-4273-ad4a-57e275ba8d76",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/ygyoo/Documents/Code/BidInfo/.archify/workflow-pipeline-flow-20261109-154700/candidate.json",
+  "output": "/Users/ygyoo/Documents/Code/BidInfo/.doc/design/archify/pipeline_workflow.html",
+  "specification": {
+    "sha256": "e750a9d411e4f667d702c515e66498238076ee47691a0440745ee390d0c48874",
+    "bytes": 4892
+  },
+  "artifact": {
+    "sha256": "3c867148770d309967eb9d683a63221a70646c6ee175f3af01f3610f6c2c40ea",
+    "bytes": 847516
+  }
+}
